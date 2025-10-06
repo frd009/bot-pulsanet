@@ -1,15 +1,13 @@
 # ============================================
 # 🤖 Bot Pulsa Net
-# File: bot_pulsanet_final.py
+# File: bot_pulsanet_final_v3.6.py
 # Developer: Farid Fauzi
-# Versi: 3.5 (Perbaikan JobQueue & Penyederhanaan)
+# Versi: 3.6 (Pembaruan Pesan Pembuka Profesional)
 # ============================================
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
-# Pustaka 'zoneinfo' tidak lagi diperlukan karena JobQueue dihapus
-# from zoneinfo import ZoneInfo 
 import warnings
 import re
 import html
@@ -26,6 +24,7 @@ def safe_html(text):
     return html.escape(str(text))
 
 # --- DAFTAR NAMA PAKET & HARGA ---
+# (Struktur data paket tidak diubah, tetap sama seperti sebelumnya)
 AKRAB_PACKAGES = {
     "akrab_mini_lite": "XL Akrab Mini Lite", "akrab_mini_lite_v2": "XL Akrab Mini Lite V2",
     "akrab_mini": "XL Akrab Mini", "akrab_mini_v2": "Akrab Anggota MINI V2",
@@ -72,7 +71,6 @@ AKRAB_QUOTA_DETAILS = {
 
 # (Sisa kode deskripsi paket tidak diubah, jadi saya singkat di sini untuk keringkasan)
 # ... KODE DESKRIPSI PAKET (AKRAB, CIRCLE, BEBAS PUAS, BANTUAN) SAMA SEPERTI SEBELUMNYA ...
-
 def create_akrab_description(package_key):
     package_name = AKRAB_PACKAGES.get(package_key, "Paket Akrab")
     price = PRICES.get(package_key, 0)
@@ -172,7 +170,15 @@ PAKET_DESCRIPTIONS = {
     ),
 }
 
+# =============================
+# 1️⃣ Fungsi utama menu (DIPERBARUI)
+# =============================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Mengirim pesan pembuka yang menarik dan profesional."""
+    # Mendapatkan nama depan pengguna untuk sapaan personal
+    user_name = update.effective_user.first_name
+    safe_name = html.escape(user_name) # Mengamankan nama dari karakter HTML
+
     keyboard = [
         [InlineKeyboardButton("📦 Paket Akrab XL", callback_data="menu_akrab_category")],
         [InlineKeyboardButton("🔥 XL Bebas Puas", callback_data="menu_bebaspuas_category")],
@@ -180,18 +186,31 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🛒 Bantuan", callback_data="menu_bantuan")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    text = ("Selamat datang di <b>Pulsa Net</b> 🎉\n\n"
-            "Kami menyediakan berbagai pilihan paket data XL/AXIS dengan harga kompetitif dan aktivasi cepat.\n\n"
-            "Silakan pilih kategori paket di bawah ini 👇")
+    
+    # Pesan pembuka baru yang lebih menarik dan profesional
+    text = (
+        f"Selamat datang, {safe_name}! 👋\n\n"
+        f"Terima kasih telah memilih <b>Pulsa Net</b>, solusi terpercaya untuk kebutuhan internet Anda.\n\n"
+        f"Nikmati berbagai keuntungan utama kami:\n"
+        f"✅ <b>Harga Terbaik</b> di Pasaran\n"
+        f"⚡ <b>Aktivasi Instan</b> & Tanpa Ribet\n"
+        f"🛡️ <b>Transaksi Aman</b> & Bergaransi\n\n"
+        f"Siap menemukan paket terbaik Anda? Silakan pilih dari menu di bawah ini. 👇"
+    )
+    
     if update.callback_query:
+        # Jika pengguna menekan tombol "kembali ke menu", edit pesan yang ada
         try:
             await update.callback_query.edit_message_text(text=text, reply_markup=reply_markup, parse_mode="HTML")
         except Exception:
-            await update.callback_query.message.reply_text(text="<b>Pulsa Net</b> - Menu Utama", reply_markup=reply_markup, parse_mode="HTML")
+            # Fallback jika edit gagal
+            await update.callback_query.message.reply_text(text=text, reply_markup=reply_markup, parse_mode="HTML")
         await update.callback_query.answer()
     elif update.message:
+        # Jika pengguna mengetik /start, kirim pesan baru
         await update.message.reply_text(text=text, reply_markup=reply_markup, parse_mode="HTML")
 
+# ... SISA KODE (category_menu, show_package_details, dll) TIDAK ADA PERUBAHAN ...
 async def category_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -254,9 +273,6 @@ async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """Fungsi utama untuk menjalankan bot."""
     app = Application.builder().token(TOKEN).build()
-
-    # Baris yang menyebabkan error telah dihapus
-    # app.job_queue.scheduler.configure(timezone=jakarta_tz)
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(category_menu, pattern=r'^(menu_akrab_category|menu_bebaspuas_category|menu_circle_category)$'))
