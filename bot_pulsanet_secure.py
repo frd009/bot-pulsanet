@@ -2,7 +2,7 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet_secure.py
 # Developer: Farid Fauzi
-# Versi: 5.0 (Pemisahan Pulsa & Paket Data)
+# Versi: 5.1 (Perbaikan Filter & Tampilan Lengkap)
 # ============================================
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -376,18 +376,22 @@ PRICES = {key: data['price'] for key, data in ALL_PACKAGES_DATA.items()}
 # --- Mengelompokkan paket berdasarkan kategori dan tipe ---
 def get_products(category=None, product_type=None, special_type=None):
     filtered_items = ALL_PACKAGES_DATA.items()
+
     if category:
-        filtered_items = [item for item in filtered_items if item[1].get('category') == category]
-    if product_type:
-         filtered_items = [item for item in filtered_items if item[1].get('type') == product_type]
+        # Perbandingan case-insensitive untuk kategori
+        filtered_items = [item for item in filtered_items if item[1].get('category', '').lower() == category.lower()]
+
     if special_type:
-        filtered_items = [item for item in filtered_items if item[1].get('type') == special_type]
-    
-    # Khusus untuk paket XL 'Lainnya', kecualikan tipe spesial
-    if category == 'XL' and product_type == 'Paket' and not special_type:
-        special_types = ['Akrab', 'BebasPuas', 'Circle']
-        filtered_items = [item for item in filtered_items if item[1].get('type') not in special_types]
-        
+        # Filter berdasarkan tipe spesial (Akrab, Circle, dll)
+        filtered_items = [item for item in filtered_items if item[1].get('type', '').lower() == special_type.lower()]
+    elif product_type:
+        # Filter berdasarkan tipe umum (Paket/Pulsa), dan untuk XL, kecualikan tipe spesial
+        if category and category.lower() == 'xl' and product_type.lower() == 'paket':
+            special_types = ['akrab', 'bebaspuas', 'circle']
+            filtered_items = [item for item in filtered_items if item[1].get('type', '').lower() == 'paket' and item[1].get('type').lower() not in special_types]
+        else:
+            filtered_items = [item for item in filtered_items if item[1].get('type', '').lower() == product_type.lower()]
+            
     return {key: data['name'] for key, data in filtered_items}
 
 
@@ -547,6 +551,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     
     if update.callback_query:
+        query = update.callback_query
         await query.edit_message_text(text=text, reply_markup=reply_markup, parse_mode="HTML")
         await query.answer()
     elif update.message:
@@ -560,7 +565,6 @@ async def show_operator_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
     product_type_key = query.data.split('_')[1] # 'paket' atau 'pulsa'
     product_type_name = "Paket Data" if product_type_key == "paket" else "Pulsa"
     
-    # Definisikan operator dan ikonnya
     operators = {
         "XL": "💙", "Axis": "💜", "Tri": "🧡", 
         "Telkomsel": "❤️", "Indosat": "💛", "By.U": "🖤"
@@ -569,13 +573,12 @@ async def show_operator_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
     keyboard = []
     row = []
     for operator, icon in operators.items():
-        # Buat callback data yang spesifik, e.g., list_paket_xl
         callback_data = f"list_{product_type_key}_{operator.lower()}"
         row.append(InlineKeyboardButton(f"{icon} {operator}", callback_data=callback_data))
         if len(row) == 2:
             keyboard.append(row)
             row = []
-    if row: # Tambahkan sisa tombol jika jumlahnya ganjil
+    if row:
         keyboard.append(row)
 
     keyboard.append([InlineKeyboardButton("⬅️ Kembali ke Menu Utama", callback_data="back_to_start")])
@@ -606,34 +609,36 @@ async def show_product_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     
     parts = query.data.split('_')
-    product_type = parts[1].capitalize() # Paket / Pulsa
-    category = parts[2].capitalize() # XL / Tri / etc.
-    special_type = parts[3].capitalize() if len(parts) > 3 else None
+    product_type_key = parts[1]
+    category_key = parts[2]
+    special_type_key = parts[3] if len(parts) > 3 else None
 
-    # Judul Menu
-    titles = {
-        "Tri": "🧡 Paket Data Tri", "Axis": "💜 Paket Data Axis", "Telkomsel": "❤️ Paket Data Telkomsel",
-        "Indosat": "💛 Paket Data Indosat", "By.U": "🖤 Paket Data By.U", "XL": "💙 Paket Data XL"
+    # --- Logika Judul ---
+    titles_map = {
+        "tri": "🧡 Tri", "axis": "💜 Axis", "telkomsel": "❤️ Telkomsel",
+        "indosat": "💛 Indosat", "by.u": "🖤 By.U", "xl": "💙 XL"
     }
-    if product_type == "Pulsa":
-        titles = {k: v.replace("Paket Data", "Pulsa") for k, v in titles.items()}
-    
-    title = titles.get(category, "Daftar Produk")
-    
-    if special_type:
-        products = get_products(category=category, special_type=special_type)
-        if special_type == 'Akrab': title = "🤝 Paket Akrab XL"
-        if special_type == 'Bebaspuas': title = "🥳 XL Bebas Puas"
-        if special_type == 'Circle': title = "🌀 XL Circle"
-        if special_type == 'Paket': title = "🚀 Paket XL Lainnya" # Untuk XL 'Lainnya'
+    base_title = titles_map.get(category_key, "Produk")
+    product_type_name = "Paket Data" if product_type_key == 'paket' else "Pulsa"
+    title = f"{base_title} - {product_type_name}"
+
+    # --- Logika Pengambilan Produk ---
+    products = {}
+    if special_type_key:
+        # Menangani subkategori XL seperti Akrab, Circle, atau 'paket' untuk Lainnya
+        products = get_products(category=category_key, special_type=special_type_key)
+        if special_type_key == 'akrab': title = "🤝 Paket Akrab XL"
+        elif special_type_key == 'bebaspuas': title = "🥳 XL Bebas Puas"
+        elif special_type_key == 'circle': title = "🌀 XL Circle"
+        elif special_type_key == 'paket': title = "🚀 Paket XL Lainnya"
     else:
-        products = get_products(category=category, product_type=product_type)
+        # Kasus umum untuk operator non-XL atau Pulsa XL
+        products = get_products(category=category_key, product_type=product_type_key)
 
     if not products:
-        await query.edit_message_text(f"Saat ini belum ada produk untuk kategori ini.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data="main_paket" if product_type == 'Paket' else 'main_pulsa')]]))
+        await query.edit_message_text(f"Saat ini belum ada produk untuk kategori <b>{title}</b>.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data="main_paket" if product_type_key == 'paket' else 'main_pulsa')]]), parse_mode="HTML")
         return
 
-    # Urutkan berdasarkan harga
     sorted_keys = sorted(products.keys(), key=lambda k: PRICES.get(k, float('inf')))
     
     keyboard = []
@@ -658,8 +663,7 @@ async def show_product_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         keyboard.append(row)
 
-    # Tombol kembali yang dinamis
-    back_button_data = "list_paket_xl" if category == 'XL' and product_type == 'Paket' else (f"main_{product_type.lower()}")
+    back_button_data = "list_paket_xl" if category_key == 'xl' and product_type_key == 'paket' else f"main_{product_type_key}"
     keyboard.append([InlineKeyboardButton("⬅️ Kembali", callback_data=back_button_data)])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -673,17 +677,20 @@ async def show_package_details(update: Update, context: ContextTypes.DEFAULT_TYP
     package_key = query.data
     text = PAKET_DESCRIPTIONS.get(package_key, "Deskripsi tidak ditemukan.")
     
-    # Menentukan tombol kembali yang tepat
     info = ALL_PACKAGES_DATA.get(package_key, {})
     category = info.get('category', '').lower()
     product_type = info.get('type', '').lower()
     
-    back_data = f"list_{'paket' if product_type != 'pulsa' else 'pulsa'}_{category}"
-    # Penanganan khusus untuk sub-menu XL
-    if category == 'xl' and product_type in ['akrab', 'bebaspuas', 'circle']:
-        back_data = f"list_paket_xl_{product_type}"
-    elif category == 'xl' and product_type == 'paket':
-         back_data = f"list_paket_xl_paket"
+    # Logika tombol kembali yang disempurnakan
+    if category == 'xl' and product_type != 'pulsa':
+        if product_type in ['akrab', 'bebaspuas', 'circle']:
+             back_data = f"list_paket_xl_{product_type}"
+        else: # Untuk 'Paket' biasa
+             back_data = "list_paket_xl_paket"
+    else:
+        # Untuk semua pulsa dan paket non-XL
+        product_type_key = 'pulsa' if product_type == 'pulsa' else 'paket'
+        back_data = f"list_{product_type_key}_{category}"
 
     keyboard = [
         [InlineKeyboardButton("🛒 Beli Produk Ini", url="https://pulsanet.kesug.com/beli.html")],
@@ -725,7 +732,7 @@ def main():
     all_package_keys_pattern = '|'.join(re.escape(k) for k in ALL_PACKAGES_DATA)
     app.add_handler(CallbackQueryHandler(show_package_details, pattern=f'^({all_package_keys_pattern})$'))
     
-    print("🤖 Bot Pulsa Net (v5.0) sedang berjalan...")
+    print("🤖 Bot Pulsa Net (v5.1) sedang berjalan...")
     app.run_polling()
 
 if __name__ == "__main__":
