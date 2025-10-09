@@ -2,13 +2,12 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet_secure.py
 # Developer: Farid Fauzi
-# Versi: 4.2 (Update Semua Paket & Ikon Menu)
+# Versi: 5.0 (Pemisahan Pulsa & Paket Data)
 # ============================================
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
-from zoneinfo import ZoneInfo
 import warnings
 import re
 import html
@@ -374,24 +373,23 @@ def create_package_key(pkg):
 ALL_PACKAGES_DATA = {create_package_key(pkg): pkg for pkg in ALL_PACKAGES_RAW}
 PRICES = {key: data['price'] for key, data in ALL_PACKAGES_DATA.items()}
 
-# --- Mengelompokkan paket berdasarkan kategori untuk menu ---
-def get_packages_by_type(package_type):
-    return {key: data['name'] for key, data in ALL_PACKAGES_DATA.items() if data.get('type') == package_type}
+# --- Mengelompokkan paket berdasarkan kategori dan tipe ---
+def get_products(category=None, product_type=None, special_type=None):
+    filtered_items = ALL_PACKAGES_DATA.items()
+    if category:
+        filtered_items = [item for item in filtered_items if item[1].get('category') == category]
+    if product_type:
+         filtered_items = [item for item in filtered_items if item[1].get('type') == product_type]
+    if special_type:
+        filtered_items = [item for item in filtered_items if item[1].get('type') == special_type]
+    
+    # Khusus untuk paket XL 'Lainnya', kecualikan tipe spesial
+    if category == 'XL' and product_type == 'Paket' and not special_type:
+        special_types = ['Akrab', 'BebasPuas', 'Circle']
+        filtered_items = [item for item in filtered_items if item[1].get('type') not in special_types]
+        
+    return {key: data['name'] for key, data in filtered_items}
 
-def get_packages_by_category(category, exclude_types=None):
-    if exclude_types is None:
-        exclude_types = []
-    return {key: data['name'] for key, data in ALL_PACKAGES_DATA.items() if data.get('category') == category and data.get('type') not in exclude_types}
-
-AKRAB_PACKAGES = get_packages_by_type('Akrab')
-BEBAS_PUAS_PACKAGES = get_packages_by_type('BebasPuas')
-CIRCLE_PACKAGES = get_packages_by_type('Circle')
-TRI_PACKAGES = get_packages_by_category('Tri')
-AXIS_PACKAGES = get_packages_by_category('Axis')
-BYU_PACKAGES = get_packages_by_category('By.U')
-INDOSAT_PACKAGES = get_packages_by_category('Indosat')
-TELKOMSEL_PACKAGES = get_packages_by_category('Telkomsel')
-XL_OTHER_PACKAGES = get_packages_by_category('XL', exclude_types=['Akrab', 'BebasPuas', 'Circle'])
 
 # --- DETAIL KUOTA PAKET (Struktur data lama untuk deskripsi Akrab) ---
 AKRAB_QUOTA_DETAILS = {
@@ -407,9 +405,7 @@ AKRAB_QUOTA_DETAILS = {
     "pkg_315_xl_akrab_mega_big_v2": {"1": "88GB - 90GB", "2": "90GB - 92GB", "3": "95GB - 97GB", "4": "105GB - 107GB"},
     "pkg_316_xl_akrab_extra_mega_big_v2": {"1": "105GB", "2": "110GB", "3": "123GB", "4": "163GB"}
 }
-# Menyesuaikan key di AKRAB_QUOTA_DETAILS agar cocok dengan key baru
-# (Contoh manual, idealnya dilakukan secara terprogram jika lebih banyak)
-AKRAB_QUOTA_DETAILS['pkg_304_xl_akrab_mini'] = AKRAB_QUOTA_DETAILS.get('pkg_305_xl_akrab_mini_v2') # Asumsi kuota sama
+AKRAB_QUOTA_DETAILS['pkg_304_xl_akrab_mini'] = AKRAB_QUOTA_DETAILS.get('pkg_305_xl_akrab_mini_v2')
 
 
 # ==============================================================================
@@ -434,7 +430,7 @@ def create_general_description(package_key):
             f"• 📝 <b>Detail:</b> {safe_html(info.get('details', 'N/A'))}\n"
             f"• 📱 <b>Provider:</b> {info.get('category', 'N/A')}"
         )
-    else: # Default untuk 'Paket'
+    else: # Default untuk 'Paket' dan tipe spesial
         description = (
             header +
             f"• 💾 <b>Kuota:</b> {info.get('data', 'N/A')}\n"
@@ -480,7 +476,6 @@ def create_circle_description(package_key):
     package_name = ALL_PACKAGES_DATA.get(package_key, {}).get('name', 'Paket XL Circle')
     price = PRICES.get(package_key, 0)
     formatted_price = f"Rp{price:,}".replace(",", ".")
-    # Ambil dari 'data' karena lebih konsisten
     quota_range = ALL_PACKAGES_DATA.get(package_key, {}).get('data', 'N/A')
     description = (
         f"<b>{safe_html(package_name)}</b>\n<b>Harga: {formatted_price}</b>\n\n"
@@ -516,7 +511,7 @@ def create_bebaspuas_description(package_key):
         f"• 📅 <b>Masa Aktif & Garansi:</b> 30 Hari.\n"
         f"• 💾 <b>Kuota Utama:</b> {kuota}, full reguler 24 jam.\n\n"
         f"• ⭐ <b>Fitur Unggulan:</b>\n"
-        f"  - <b>Akumulasi Kuota:</b> Sisa kuota dan masa aktif akan ditambahkan jika Anda membeli/menimpa dengan paket Bebas Puas lain.\n"
+        f"  - <b>Akulasi Kuota:</b> Sisa kuota dan masa aktif akan ditambahkan jika Anda membeli/menimpa dengan paket Bebas Puas lain.\n"
         f"  - <b>Tanpa Syarat Pulsa:</b> Aktivasi paket tidak memerlukan pulsa minimum.\n\n"
         f"• 🎁 <b>Klaim Bonus:</b>\n"
         f"  - Tersedia bonus kuota (pilih salah satu: YouTube, TikTok, atau Kuota Utama) yang dapat diklaim di aplikasi myXL.\n"
@@ -524,138 +519,175 @@ def create_bebaspuas_description(package_key):
     )
 
 # --- Kumpulan Semua Deskripsi ---
-PAKET_DESCRIPTIONS = {
-    # Deskripsi dinamis untuk semua paket umum
-    **{key: create_general_description(key) for key in ALL_PACKAGES_DATA},
-    # Timpa dengan deskripsi khusus yang lebih detail
-    **{key: create_akrab_description(key) for key in AKRAB_PACKAGES},
-    **{key: create_circle_description(key) for key in CIRCLE_PACKAGES},
-    **{key: create_bebaspuas_description(key) for key in BEBAS_PUAS_PACKAGES},
-    "bantuan": (
-        "<b>❔ Bantuan Bot Pulsa Net</b>\n\n"
-        "Ketik /start untuk kembali ke menu utama.\n"
-        "Hubungi admin jika Anda ingin mendaftar reseller atau melaporkan kendala teknis.\n\n"
-        "📞 <b>Admin:</b> @hexynos\n"
-        "🌐 <b>Website:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>"
-    ),
-}
+PAKET_DESCRIPTIONS = {**{key: create_general_description(key) for key in ALL_PACKAGES_DATA}}
+for key in get_products(special_type='Akrab'): PAKET_DESCRIPTIONS[key] = create_akrab_description(key)
+for key in get_products(special_type='Circle'): PAKET_DESCRIPTIONS[key] = create_circle_description(key)
+for key in get_products(special_type='BebasPuas'): PAKET_DESCRIPTIONS[key] = create_bebaspuas_description(key)
+PAKET_DESCRIPTIONS["bantuan"] = (
+    "<b>❔ Bantuan Bot Pulsa Net</b>\n\n"
+    "Ketik /start untuk kembali ke menu utama.\n"
+    "Hubungi admin jika Anda ingin mendaftar reseller atau melaporkan kendala teknis.\n\n"
+    "📞 <b>Admin:</b> @hexynos\n"
+    "🌐 <b>Website:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>"
+)
 
 # =============================
-# 🏠 Fungsi utama menu
+# 🏠 MENU UTAMA & NAVIGASI
 # =============================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Menampilkan menu utama: Paket Data atau Pulsa."""
     keyboard = [
-        [InlineKeyboardButton("🤝 Akrab XL", callback_data="menu_akrab_category"), InlineKeyboardButton("🥳 XL Bebas Puas", callback_data="menu_bebaspuas_category")],
-        [InlineKeyboardButton("🌀 XL Circle", callback_data="menu_circle_category"), InlineKeyboardButton("🚀 Paket XL Lainnya", callback_data="menu_xl_other_category")],
-        [InlineKeyboardButton("🧡 Tri", callback_data="menu_tri_category"), InlineKeyboardButton("💜 Axis", callback_data="menu_axis_category")],
-        [InlineKeyboardButton("❤️ Telkomsel", callback_data="menu_telkomsel_category"), InlineKeyboardButton("💛 Indosat", callback_data="menu_indosat_category")],
-        [InlineKeyboardButton("🖤 By.U", callback_data="menu_byu_category")],
-        [InlineKeyboardButton("❔ Bantuan", callback_data="menu_bantuan")]
+        [InlineKeyboardButton("📶 Paket Data", callback_data="main_paket"), InlineKeyboardButton("💰 Pulsa", callback_data="main_pulsa")],
+        [InlineKeyboardButton("❔ Bantuan", callback_data="main_bantuan")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     text = (
         "Selamat datang di <b>Pulsa Net</b> 🎉\n\n"
-        "Kami menyediakan berbagai pilihan paket data & pulsa dengan harga kompetitif dan aktivasi cepat.\n\n"
-        "Silakan pilih kategori di bawah ini 👇"
+        "Silakan pilih jenis produk yang Anda inginkan:"
     )
     
     if update.callback_query:
-        try:
-            await update.callback_query.edit_message_text(text=text, reply_markup=reply_markup, parse_mode="HTML")
-        except Exception:
-            # Jika pesan sama, kirim pesan baru untuk menghindari error
-            await update.callback_query.message.reply_text(text="<b>Pulsa Net</b> - Menu Utama", reply_markup=reply_markup, parse_mode="HTML")
-        await update.callback_query.answer()
+        await query.edit_message_text(text=text, reply_markup=reply_markup, parse_mode="HTML")
+        await query.answer()
     elif update.message:
         await update.message.reply_text(text=text, reply_markup=reply_markup, parse_mode="HTML")
 
-# =============================
-# 🖱️ Callback Handlers
-# =============================
-async def category_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def show_operator_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Menampilkan menu pilihan operator berdasarkan tipe produk (Paket/Pulsa)."""
     query = update.callback_query
     await query.answer()
     
-    data = query.data
-    category_map = {
-        "menu_akrab_category": ("🤝 Paket Akrab XL", AKRAB_PACKAGES),
-        "menu_bebaspuas_category": ("🥳 XL Bebas Puas", BEBAS_PUAS_PACKAGES),
-        "menu_circle_category": ("🌀 XL Circle", CIRCLE_PACKAGES),
-        "menu_xl_other_category": ("🚀 Paket XL Lainnya", XL_OTHER_PACKAGES),
-        "menu_tri_category": ("🧡 Tri", TRI_PACKAGES),
-        "menu_axis_category": ("💜 Axis", AXIS_PACKAGES),
-        "menu_telkomsel_category": ("❤️ Telkomsel", TELKOMSEL_PACKAGES),
-        "menu_indosat_category": ("💛 Indosat", INDOSAT_PACKAGES),
-        "menu_byu_category": ("🖤 By.U", BYU_PACKAGES),
-    }
-
-    if data not in category_map:
-        await query.edit_message_text("Kategori tidak ditemukan.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data="back_to_start")]]))
-        return
-
-    title, packages = category_map[data]
-
-    if not packages:
-        await query.edit_message_text(f"Saat ini belum ada produk untuk kategori <b>{title}</b>.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali ke Menu", callback_data="back_to_start")]]), parse_mode="HTML")
-        return
-
-    keyboard = []
-    # Urutkan berdasarkan harga termurah
-    sorted_keys = sorted(packages.keys(), key=lambda k: PRICES.get(k, float('inf')))
+    product_type_key = query.data.split('_')[1] # 'paket' atau 'pulsa'
+    product_type_name = "Paket Data" if product_type_key == "paket" else "Pulsa"
     
+    # Definisikan operator dan ikonnya
+    operators = {
+        "XL": "💙", "Axis": "💜", "Tri": "🧡", 
+        "Telkomsel": "❤️", "Indosat": "💛", "By.U": "🖤"
+    }
+    
+    keyboard = []
+    row = []
+    for operator, icon in operators.items():
+        # Buat callback data yang spesifik, e.g., list_paket_xl
+        callback_data = f"list_{product_type_key}_{operator.lower()}"
+        row.append(InlineKeyboardButton(f"{icon} {operator}", callback_data=callback_data))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row: # Tambahkan sisa tombol jika jumlahnya ganjil
+        keyboard.append(row)
+
+    keyboard.append([InlineKeyboardButton("⬅️ Kembali ke Menu Utama", callback_data="back_to_start")])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    text = f"Anda memilih <b>{product_type_name}</b>. Silakan pilih provider:"
+    await query.edit_message_text(text=text, reply_markup=reply_markup, parse_mode="HTML")
+
+async def show_xl_paket_submenu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Menampilkan submenu khusus untuk Paket Data XL."""
+    query = update.callback_query
+    await query.answer()
+
+    keyboard = [
+        [InlineKeyboardButton("🤝 Akrab XL", callback_data="list_paket_xl_akrab")],
+        [InlineKeyboardButton("🥳 XL Bebas Puas", callback_data="list_paket_xl_bebaspuas")],
+        [InlineKeyboardButton("🌀 XL Circle", callback_data="list_paket_xl_circle")],
+        [InlineKeyboardButton("🚀 Paket XL Lainnya", callback_data="list_paket_xl_paket")],
+        [InlineKeyboardButton("⬅️ Kembali ke Pilihan Provider", callback_data="main_paket")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    text = "<b>💙 Paket Data XL</b>\n\nSilakan pilih jenis paket XL yang Anda inginkan:"
+    await query.edit_message_text(text=text, reply_markup=reply_markup, parse_mode="HTML")
+
+async def show_product_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Menampilkan daftar produk berdasarkan operator dan tipe."""
+    query = update.callback_query
+    await query.answer()
+    
+    parts = query.data.split('_')
+    product_type = parts[1].capitalize() # Paket / Pulsa
+    category = parts[2].capitalize() # XL / Tri / etc.
+    special_type = parts[3].capitalize() if len(parts) > 3 else None
+
+    # Judul Menu
+    titles = {
+        "Tri": "🧡 Paket Data Tri", "Axis": "💜 Paket Data Axis", "Telkomsel": "❤️ Paket Data Telkomsel",
+        "Indosat": "💛 Paket Data Indosat", "By.U": "🖤 Paket Data By.U", "XL": "💙 Paket Data XL"
+    }
+    if product_type == "Pulsa":
+        titles = {k: v.replace("Paket Data", "Pulsa") for k, v in titles.items()}
+    
+    title = titles.get(category, "Daftar Produk")
+    
+    if special_type:
+        products = get_products(category=category, special_type=special_type)
+        if special_type == 'Akrab': title = "🤝 Paket Akrab XL"
+        if special_type == 'Bebaspuas': title = "🥳 XL Bebas Puas"
+        if special_type == 'Circle': title = "🌀 XL Circle"
+        if special_type == 'Paket': title = "🚀 Paket XL Lainnya" # Untuk XL 'Lainnya'
+    else:
+        products = get_products(category=category, product_type=product_type)
+
+    if not products:
+        await query.edit_message_text(f"Saat ini belum ada produk untuk kategori ini.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data="main_paket" if product_type == 'Paket' else 'main_pulsa')]]))
+        return
+
+    # Urutkan berdasarkan harga
+    sorted_keys = sorted(products.keys(), key=lambda k: PRICES.get(k, float('inf')))
+    
+    keyboard = []
     for i in range(0, len(sorted_keys), 2):
         row = []
         key1 = sorted_keys[i]
-        name1 = packages[key1]
+        name1 = products[key1]
         price1 = PRICES.get(key1, 0)
         formatted_price1 = f"Rp{price1:,}".replace(",", ".")
-        # Menyingkat nama tombol agar tidak terlalu panjang
-        short_name1 = name1.replace('Tri ', '').replace('Axis Paket ', '').replace('XL ', '').replace('Telkomsel ','').replace('Indosat ','').replace('By.U ','')
+        short_name1 = re.sub(r'^(Tri|Axis|XL|Telkomsel|Indosat|By\.U)\s*', '', name1, flags=re.I).replace('Paket ', '')
         button_text1 = f"{short_name1} - {formatted_price1}"
         row.append(InlineKeyboardButton(button_text1, callback_data=key1))
 
         if i + 1 < len(sorted_keys):
             key2 = sorted_keys[i+1]
-            name2 = packages[key2]
+            name2 = products[key2]
             price2 = PRICES.get(key2, 0)
             formatted_price2 = f"Rp{price2:,}".replace(",", ".")
-            short_name2 = name2.replace('Tri ', '').replace('Axis Paket ', '').replace('XL ', '').replace('Telkomsel ','').replace('Indosat ','').replace('By.U ','')
+            short_name2 = re.sub(r'^(Tri|Axis|XL|Telkomsel|Indosat|By\.U)\s*', '', name2, flags=re.I).replace('Paket ', '')
             button_text2 = f"{short_name2} - {formatted_price2}"
             row.append(InlineKeyboardButton(button_text2, callback_data=key2))
         
         keyboard.append(row)
 
-    keyboard.append([InlineKeyboardButton("⬅️ Kembali ke Menu Utama", callback_data="back_to_start")])
+    # Tombol kembali yang dinamis
+    back_button_data = "list_paket_xl" if category == 'XL' and product_type == 'Paket' else (f"main_{product_type.lower()}")
+    keyboard.append([InlineKeyboardButton("⬅️ Kembali", callback_data=back_button_data)])
+    
     reply_markup = InlineKeyboardMarkup(keyboard)
-    text = f"<b>{title}</b>\n\nSilakan pilih produk yang detailnya ingin Anda lihat:"
-    await query.edit_message_text(text=text, reply_markup=reply_markup, parse_mode="HTML")
+    await query.edit_message_text(text=f"<b>{title}</b>\n\nSilakan pilih produk:", reply_markup=reply_markup, parse_mode="HTML")
 
 async def show_package_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Menampilkan detail dari produk yang dipilih."""
     query = update.callback_query
     await query.answer()
     
     package_key = query.data
     text = PAKET_DESCRIPTIONS.get(package_key, "Deskripsi tidak ditemukan.")
     
-    # Menentukan tombol kembali yang tepat berdasarkan kategori paket
-    package_info = ALL_PACKAGES_DATA.get(package_key, {})
-    category = package_info.get('category')
-    pkg_type = package_info.get('type')
-
-    back_to_category_data = "back_to_start" # Default
-    if pkg_type == 'Akrab': back_to_category_data = "menu_akrab_category"
-    elif pkg_type == 'BebasPuas': back_to_category_data = "menu_bebaspuas_category"
-    elif pkg_type == 'Circle': back_to_category_data = "menu_circle_category"
-    elif category == 'XL': back_to_category_data = "menu_xl_other_category"
-    elif category == 'Tri': back_to_category_data = "menu_tri_category"
-    elif category == 'Axis': back_to_category_data = "menu_axis_category"
-    elif category == 'Telkomsel': back_to_category_data = "menu_telkomsel_category"
-    elif category == 'Indosat': back_to_category_data = "menu_indosat_category"
-    elif category == 'By.U': back_to_category_data = "menu_byu_category"
+    # Menentukan tombol kembali yang tepat
+    info = ALL_PACKAGES_DATA.get(package_key, {})
+    category = info.get('category', '').lower()
+    product_type = info.get('type', '').lower()
+    
+    back_data = f"list_{'paket' if product_type != 'pulsa' else 'pulsa'}_{category}"
+    # Penanganan khusus untuk sub-menu XL
+    if category == 'xl' and product_type in ['akrab', 'bebaspuas', 'circle']:
+        back_data = f"list_paket_xl_{product_type}"
+    elif category == 'xl' and product_type == 'paket':
+         back_data = f"list_paket_xl_paket"
 
     keyboard = [
         [InlineKeyboardButton("🛒 Beli Produk Ini", url="https://pulsanet.kesug.com/beli.html")],
-        [InlineKeyboardButton("⬅️ Kembali ke Daftar", callback_data=back_to_category_data)],
+        [InlineKeyboardButton("⬅️ Kembali ke Daftar Produk", callback_data=back_data)],
         [InlineKeyboardButton("🏠 Kembali ke Menu Utama", callback_data="back_to_start")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -669,33 +701,31 @@ async def show_bantuan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(text=text, reply_markup=reply_markup, parse_mode="HTML", disable_web_page_preview=True)
 
-async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await start(update, context)
-
 # =============================
 # 🚀 Jalankan Bot
 # =============================
 def main():
     app = Application.builder().token(TOKEN).build()
     
-    # Handler untuk /start
+    # Command & Main Menu
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(start, pattern='^back_to_start$'))
+    app.add_handler(CallbackQueryHandler(show_bantuan, pattern='^main_bantuan$'))
     
-    # Handler untuk menu kategori
-    category_pattern = r'^(menu_akrab_category|menu_bebaspuas_category|menu_circle_category|menu_xl_other_category|menu_tri_category|menu_axis_category|menu_telkomsel_category|menu_indosat_category|menu_byu_category)$'
-    app.add_handler(CallbackQueryHandler(category_menu, pattern=category_pattern))
+    # Level 1: Pilih Tipe Produk (Paket/Pulsa)
+    app.add_handler(CallbackQueryHandler(show_operator_menu, pattern=r'^main_(paket|pulsa)$'))
     
-    # Handler untuk bantuan
-    app.add_handler(CallbackQueryHandler(show_bantuan, pattern='^menu_bantuan$'))
+    # Level 2: Khusus untuk XL, tampilkan submenu
+    app.add_handler(CallbackQueryHandler(show_xl_paket_submenu, pattern=r'^list_paket_xl$'))
+    
+    # Level 3: Tampilkan daftar produk
+    app.add_handler(CallbackQueryHandler(show_product_list, pattern=r'^list_(paket|pulsa)_.+$'))
 
     # Handler untuk menampilkan detail semua paket
     all_package_keys_pattern = '|'.join(re.escape(k) for k in ALL_PACKAGES_DATA)
     app.add_handler(CallbackQueryHandler(show_package_details, pattern=f'^({all_package_keys_pattern})$'))
     
-    # Handler untuk kembali ke menu utama
-    app.add_handler(CallbackQueryHandler(back_to_menu, pattern='^back_to_start$'))
-
-    print("🤖 Bot Pulsa Net (v4.2) sedang berjalan...")
+    print("🤖 Bot Pulsa Net (v5.0) sedang berjalan...")
     app.run_polling()
 
 if __name__ == "__main__":
