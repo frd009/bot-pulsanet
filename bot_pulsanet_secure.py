@@ -2,7 +2,7 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet_secure.py
 # Developer: Farid Fauzi
-# Versi: 5.1 (Perbaikan Filter & Tampilan Lengkap)
+# Versi: 5.2 (Perbaikan Stabilitas & Error Handling)
 # ============================================
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -388,7 +388,8 @@ def get_products(category=None, product_type=None, special_type=None):
         # Filter berdasarkan tipe umum (Paket/Pulsa), dan untuk XL, kecualikan tipe spesial
         if category and category.lower() == 'xl' and product_type.lower() == 'paket':
             special_types = ['akrab', 'bebaspuas', 'circle']
-            filtered_items = [item for item in filtered_items if item[1].get('type', '').lower() == 'paket' and item[1].get('type').lower() not in special_types]
+            # PERBAIKAN: Menggunakan .get('type', '') untuk mencegah AttributeError jika kunci 'type' tidak ada.
+            filtered_items = [item for item in filtered_items if item[1].get('type', '').lower() == 'paket' and item[1].get('type', '').lower() not in special_types]
         else:
             filtered_items = [item for item in filtered_items if item[1].get('type', '').lower() == product_type.lower()]
             
@@ -524,9 +525,9 @@ def create_bebaspuas_description(package_key):
 
 # --- Kumpulan Semua Deskripsi ---
 PAKET_DESCRIPTIONS = {**{key: create_general_description(key) for key in ALL_PACKAGES_DATA}}
-for key in get_products(special_type='Akrab'): PAKET_DESCRIPTIONS[key] = create_akrab_description(key)
-for key in get_products(special_type='Circle'): PAKET_DESCRIPTIONS[key] = create_circle_description(key)
-for key in get_products(special_type='BebasPuas'): PAKET_DESCRIPTIONS[key] = create_bebaspuas_description(key)
+for key in get_products(category='XL', special_type='Akrab'): PAKET_DESCRIPTIONS[key] = create_akrab_description(key)
+for key in get_products(category='XL', special_type='Circle'): PAKET_DESCRIPTIONS[key] = create_circle_description(key)
+for key in get_products(category='XL', special_type='BebasPuas'): PAKET_DESCRIPTIONS[key] = create_bebaspuas_description(key)
 PAKET_DESCRIPTIONS["bantuan"] = (
     "<b>❔ Bantuan Bot Pulsa Net</b>\n\n"
     "Ketik /start untuk kembali ke menu utama.\n"
@@ -682,6 +683,7 @@ async def show_package_details(update: Update, context: ContextTypes.DEFAULT_TYP
     product_type = info.get('type', '').lower()
     
     # Logika tombol kembali yang disempurnakan
+    back_data = ""
     if category == 'xl' and product_type != 'pulsa':
         if product_type in ['akrab', 'bebaspuas', 'circle']:
              back_data = f"list_paket_xl_{product_type}"
@@ -732,9 +734,8 @@ def main():
     all_package_keys_pattern = '|'.join(re.escape(k) for k in ALL_PACKAGES_DATA)
     app.add_handler(CallbackQueryHandler(show_package_details, pattern=f'^({all_package_keys_pattern})$'))
     
-    print("🤖 Bot Pulsa Net (v5.1) sedang berjalan...")
+    print("🤖 Bot Pulsa Net (v5.2) sedang berjalan...")
     app.run_polling()
 
 if __name__ == "__main__":
     main()
-
