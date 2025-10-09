@@ -1,8 +1,8 @@
 # ============================================
 # 🤖 Bot Pulsa Net
-# File: bot_pulsanet_main.py (Inline Version)
+# File: bot_pulsanet_secure.py (Inline Version)
 # Developer: Farid Fauzi
-# Versi: 5.3 (Inline, Terkurasi & Disempurnakan)
+# Versi: 6.0 (Profesional, Deskripsi Lengkap & Layout Final)
 # ============================================
 
 import os
@@ -122,9 +122,8 @@ AKRAB_QUOTA_DETAILS = {
 }
 AKRAB_QUOTA_DETAILS['pkg_304_xl_akrab_mini'] = AKRAB_QUOTA_DETAILS.get('pkg_305_xl_akrab_mini_v2')
 
-
 # ==============================================================================
-# ✍️ FUNGSI PEMBUAT DESKRIPSI
+# ✍️ FUNGSI PEMBUAT DESKRIPSI (VERSI LENGKAP)
 # ==============================================================================
 
 def create_general_description(package_key):
@@ -144,61 +143,92 @@ def create_akrab_description(package_key):
     info = ALL_PACKAGES_DATA.get(package_key, {})
     price = f"Rp{info.get('price', 0):,}".replace(",", ".")
     quota_info = AKRAB_QUOTA_DETAILS.get(package_key)
-    description = (f"<b>{safe_html(info.get('name', 'Paket Akrab'))}</b>\n<b>Harga: {price}</b>\n\n"
-                   f"• ✅ <b>Jenis:</b> Resmi (OFFICIAL)\n"
-                   f"• 🛡️ <b>Jaminan:</b> GARANSI FULL\n"
-                   f"• 🌐 <b>Kompatibilitas:</b> XL / AXIS / LIVEON\n"
-                   f"• 📅 <b>Masa Aktif:</b> ±28 hari\n\n")
+    description = (
+        f"<b>{safe_html(info.get('name', 'Paket Akrab'))}</b>\n<b>Harga: {price}</b>\n\n"
+        f"• ✅ <b>Jenis Paket:</b> Resmi (OFFICIAL).\n"
+        f"• 🛡️ <b>Jaminan:</b> GARANSI FULL.\n"
+        f"• 🌐 <b>Kompatibilitas:</b> Bisa untuk XL / AXIS / LIVEON.\n"
+        f"• 📅 <b>Masa Aktif:</b> ±28 hari, sesuai ketentuan pihak XL.\n\n"
+    )
     if quota_info:
-        description += (f"• 💾 <b>Kuota 24 Jam (berdasarkan zona):</b>\n"
-                        f"  - <b>AREA 1:</b> {quota_info.get('1', 'N/A')}\n"
-                        f"  - <b>AREA 2:</b> {quota_info.get('2', 'N/A')}\n"
-                        f"  - <b>AREA 3:</b> {quota_info.get('3', 'N/A')}\n"
-                        f"  - <b>AREA 4:</b> {quota_info.get('4', 'N/A')}\n\n")
-    description += ("• ℹ️ <b>Info Tambahan:</b>\n"
-                    "  - <a href='http://bit.ly/area_akrab'>Cek Area Anda di sini</a>\n"
-                    "  - <a href='https://kmsp-store.com/cara-unreg-paket-akrab-yang-benar'>Panduan Unreg Paket Akrab</a>")
+        description += (
+            f"• 💾 <b>Kuota 24 Jam (berdasarkan zona):</b>\n"
+            f"  - <b>AREA 1:</b> {quota_info.get('1', 'N/A')}\n"
+            f"  - <b>AREA 2:</b> {quota_info.get('2', 'N/A')}\n"
+            f"  - <b>AREA 3:</b> {quota_info.get('3', 'N/A')}\n"
+            f"  - <b>AREA 4:</b> {quota_info.get('4', 'N/A')}\n\n"
+        )
+    else:
+        description += "• 💾 <b>Detail Kuota:</b>\n  - Informasi detail kuota berdasarkan zona untuk paket ini akan segera diperbarui.\n\n"
+    
+    description += (
+        f"• 📋 <b>Prosedur & Ketentuan:</b>\n"
+        f"  - Pastikan kartu SIM terpasang pada perangkat (HP/Modem) untuk deteksi lokasi BTS dan mendapatkan bonus kuota lokal.\n"
+        f"  - Apabila kuota MyRewards belum masuk full, tunggu 1x24 jam sebelum laporan ke Admin.\n\n"
+        f"• ℹ️ <b>Informasi Tambahan:</b>\n"
+        f"  - <a href='http://bit.ly/area_akrab'>Cek Area Anda di sini</a>\n"
+        f"  - <a href='https://kmsp-store.com/cara-unreg-paket-akrab-yang-benar'>Panduan Unreg Paket Akrab</a>"
+    )
     return description
 
 def create_circle_description(package_key):
     info = ALL_PACKAGES_DATA.get(package_key, {})
     price = f"Rp{info.get('price', 0):,}".replace(",", ".")
-    return (f"<b>{safe_html(info.get('name', 'Paket XL Circle'))}</b>\n<b>Harga: {price}</b>\n\n"
-            f"• 💾 <b>Estimasi Kuota:</b> {info.get('data', 'N/A')}\n"
-            f"• 📱 <b>Kompatibilitas:</b> Hanya untuk XL Prabayar.\n"
-            f"• ⏳ <b>Masa Aktif:</b> 28 hari atau hingga kuota habis.\n"
-            f"• ⚡ <b>Aktivasi:</b> Instan, tanpa OTP.\n\n"
-            f"⚠️ <b>PERHATIAN PENTING:</b>\n"
-            f"<b>1. Cara Cek Kuota:</b> Buka MyXL terbaru > Klik menu <b>XL CIRCLE</b>.\n"
-            f"<b>2. Syarat:</b> Umur kartu min. 60 hari, tidak gabung Circle lain, dan tidak dalam masa tenggang.")
+    return (
+        f"<b>{safe_html(info.get('name', 'Paket XL Circle'))}</b>\n<b>Harga: {price}</b>\n\n"
+        f"• 💾 <b>Estimasi Kuota:</b> {info.get('data', 'N/A')} (bisa dapat lebih jika beruntung).\n"
+        f"• 📱 <b>Kompatibilitas:</b> Hanya untuk XL Prabayar (Prepaid).\n"
+        f"• ⏳ <b>Masa Aktif:</b> 28 hari atau hingga kuota habis. Jika kuota habis sebelum 28 hari, keanggotaan akan masuk kondisi <b>BEKU/FREEZE</b>.\n"
+        f"• ⚡ <b>Aktivasi:</b> Instan, tidak menggunakan OTP.\n\n"
+        f"⚠️ <b>PERHATIAN (PENTING):</b>\n"
+        f"<b>1. Cara Cek Kuota:</b>\n"
+        f"   - Buka aplikasi <b>MyXL terbaru</b>.\n"
+        f"   - Klik menu <b>XL CIRCLE</b> di bagian bawah layar. (Bukan dari 'Lihat Paket Saya').\n\n"
+        f"<b>2. Syarat & Ketentuan:</b>\n"
+        f"   - <b>Umur Kartu:</b> Minimal 60 hari. Cek di <a href='https://sidompul.kmsp-store.com/'>sini</a>.\n"
+        f"   - <b>Keanggotaan:</b> Tidak sedang terdaftar/bergabung di Circle lain dalam bulan yang sama.\n"
+        f"   - <b>Masa Tenggang:</b> Kartu tidak boleh dalam masa tenggang.\n"
+        f"   - <b>Dilarang Unreg:</b> Keluar dari Circle akan menghanguskan garansi tanpa refund."
+    )
 
 def create_bebaspuas_description(package_key):
     info = ALL_PACKAGES_DATA.get(package_key, {})
     price = f"Rp{info.get('price', 0):,}".replace(",", ".")
-    return (f"<b>{safe_html(info.get('name', 'Bebas Puas'))}</b>\n<b>Harga: {price}</b>\n\n"
-            f"• ✅ <b>Jenis:</b> Resmi (OFFICIAL) via Sidompul.\n"
-            f"• 💾 <b>Kuota Utama:</b> {info.get('data', 'N/A')}, full 24 jam.\n"
-            f"• 📅 <b>Masa Aktif & Garansi:</b> 30 Hari.\n"
-            f"• ⭐ <b>Fitur:</b> Sisa kuota dapat diakumulasi.")
+    return (
+        f"<b>{safe_html(info.get('name', 'Bebas Puas'))}</b>\n<b>Harga: {price}</b>\n\n"
+        f"• ✅ <b>Jenis Paket:</b> Resmi (OFFICIAL) jalur Sidompul.\n"
+        f"• ⚡ <b>Aktivasi Instan:</b> Tidak memerlukan kode OTP.\n"
+        f"• 📱 <b>Kompatibilitas:</b> Hanya untuk XL Prabayar (Prepaid).\n"
+        f"• 🌍 <b>Area:</b> Berlaku di semua area.\n"
+        f"• 📅 <b>Masa Aktif & Garansi:</b> 30 Hari.\n"
+        f"• 💾 <b>Kuota Utama:</b> {info.get('data', 'N/A')}, full reguler 24 jam.\n\n"
+        f"• ⭐ <b>Fitur Unggulan:</b>\n"
+        f"  - <b>Akumulasi Kuota:</b> Sisa kuota dan masa aktif akan ditambahkan jika Anda membeli/menimpa dengan paket Bebas Puas lain.\n"
+        f"  - <b>Tanpa Syarat Pulsa:</b> Aktivasi paket tidak memerlukan pulsa minimum.\n\n"
+        f"• 🎁 <b>Klaim Bonus:</b>\n"
+        f"  - Tersedia bonus kuota (pilih salah satu: YouTube, TikTok, atau Kuota Utama) yang dapat diklaim di aplikasi myXL."
+    )
 
 PAKET_DESCRIPTIONS = {key: create_general_description(key) for key in ALL_PACKAGES_DATA}
 for key in get_products(special_type='Akrab'): PAKET_DESCRIPTIONS[key] = create_akrab_description(key)
 for key in get_products(special_type='Circle'): PAKET_DESCRIPTIONS[key] = create_circle_description(key)
 for key in get_products(special_type='BebasPuas'): PAKET_DESCRIPTIONS[key] = create_bebaspuas_description(key)
-PAKET_DESCRIPTIONS["bantuan"] = ("<b>❔ Bantuan Bot Pulsa Net</b>\n\n"
-                                 "Ketik /start untuk kembali ke menu utama.\n"
-                                 "Hubungi admin jika Anda ingin bertanya atau melaporkan kendala.\n\n"
+PAKET_DESCRIPTIONS["bantuan"] = ("<b>❔ Bantuan & Informasi</b>\n\n"
+                                 "Selamat datang di pusat bantuan Pulsa Net Bot.\n\n"
+                                 "Jika Anda mengalami kendala teknis dengan bot, ingin bertanya tentang produk, atau tertarik untuk menjadi reseller, jangan ragu untuk menghubungi admin kami.\n\n"
+                                 "Gunakan perintah /start untuk kembali ke menu utama kapan saja.\n\n"
                                  "📞 <b>Admin:</b> @hexynos\n"
-                                 "🌐 <b>Website:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
+                                 "🌐 <b>Website Resmi:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
 
 # ==============================================================================
 # 🤖 FUNGSI HANDLER BOT
 # ==============================================================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
     jakarta_tz = ZoneInfo("Asia/Jakarta")
     now = datetime.now(jakarta_tz)
-    hour, day_name = now.hour, ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"][now.weekday()]
+    hour = now.hour
     
     if 5 <= hour < 12: greeting = "Selamat Pagi ☀️"
     elif 12 <= hour < 15: greeting = "Selamat Siang 🌤️"
@@ -208,11 +238,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("📶 Paket Data", callback_data="main_paket"), InlineKeyboardButton("💰 Pulsa", callback_data="main_pulsa")],
         [InlineKeyboardButton("🌐 Lihat Semua Produk (Website)", url="https://pulsanet.kesug.com/beli.html")],
-        [InlineKeyboardButton("❔ Bantuan", callback_data="main_bantuan")]
+        [InlineKeyboardButton("❔ Bantuan & Kontak Admin", callback_data="main_bantuan")]
     ]
-    text = (f"{greeting}\n<i>{day_name}, {now.strftime('%d %B %Y, %H:%M')} WIB</i>\n\n"
-            "Selamat datang di <b>Pulsa Net Bot</b>! 🎉\n\n"
-            "Cari paket data atau pulsa dengan harga terbaik di sini. "
+    text = (f"{greeting}, {user.first_name}!\n\n"
+            "Selamat datang di <b>Pulsa Net Bot</b>, asisten digital Anda untuk kebutuhan pulsa dan paket data. "
+            "Pilih kategori di bawah untuk melihat produk terpopuler kami.\n\n"
             "Untuk daftar produk yang lebih lengkap, silakan kunjungi website kami.")
     
     if update.callback_query:
@@ -229,10 +259,15 @@ async def show_operator_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
     product_type_name = "Paket Data" if product_type_key == "paket" else "Pulsa"
     operators = {"XL": "💙", "Axis": "💜", "Tri": "🧡", "Telkomsel": "❤️", "Indosat": "💛", "By.U": "🖤"}
     
-    keyboard = [
-        [InlineKeyboardButton(f"{icon} {op}", callback_data=f"list_{product_type_key}_{op.lower()}") for op, icon in row]
-        for row in [list(operators.items())[i:i+2] for i in range(0, len(operators), 2)]
-    ]
+    # Membuat layout dua kolom
+    op_items = list(operators.items())
+    keyboard = []
+    for i in range(0, len(op_items), 2):
+        row = []
+        for op, icon in op_items[i:i+2]:
+            row.append(InlineKeyboardButton(f"{icon} {op}", callback_data=f"list_{product_type_key}_{op.lower()}"))
+        keyboard.append(row)
+        
     keyboard.append([InlineKeyboardButton("⬅️ Kembali ke Menu Utama", callback_data="back_to_start")])
     
     await query.edit_message_text(f"Anda memilih <b>{product_type_name}</b>. Silakan pilih provider:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
@@ -240,11 +275,9 @@ async def show_operator_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def show_xl_paket_submenu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer()
     keyboard = [
-        [InlineKeyboardButton("🤝 Akrab XL", callback_data="list_paket_xl_akrab")],
-        [InlineKeyboardButton("🥳 XL Bebas Puas", callback_data="list_paket_xl_bebaspuas")],
-        [InlineKeyboardButton("🌀 XL Circle", callback_data="list_paket_xl_circle")],
-        [InlineKeyboardButton("🚀 Paket XL Lainnya", callback_data="list_paket_xl_paket")],
-        [InlineKeyboardButton("⬅️ Kembali", callback_data="main_paket")]
+        [InlineKeyboardButton("🤝 Akrab XL", callback_data="list_paket_xl_akrab"), InlineKeyboardButton("🥳 XL Bebas Puas", callback_data="list_paket_xl_bebaspuas")],
+        [InlineKeyboardButton("🌀 XL Circle", callback_data="list_paket_xl_circle"), InlineKeyboardButton("🚀 Paket XL Lainnya", callback_data="list_paket_xl_paket")],
+        [InlineKeyboardButton("⬅️ Kembali ke Pilihan Provider", callback_data="main_paket")]
     ]
     await update.callback_query.edit_message_text("<b>💙 Paket Data XL</b>\n\nPilih jenis paket:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
@@ -279,7 +312,7 @@ async def show_product_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     back_cb = "list_paket_xl" if category_key == 'xl' and product_type_key == 'paket' else f"main_{product_type_key}"
     keyboard.append([InlineKeyboardButton("⬅️ Kembali", callback_data=back_cb)])
-    await query.edit_message_text(f"<b>{title}</b>\n\nPilih produk:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    await query.edit_message_text(f"<b>{title}</b>\n\nPilih produk dari daftar terpopuler kami:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
 async def show_package_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query, package_key = update.callback_query, update.callback_query.data
@@ -323,7 +356,7 @@ def main():
     app.add_handler(CallbackQueryHandler(show_product_list, pattern=r'^list_(paket|pulsa)_.+$'))
     app.add_handler(CallbackQueryHandler(show_package_details, pattern=f'^({ "|".join(re.escape(k) for k in ALL_PACKAGES_DATA) })$'))
     
-    print("🤖 Bot Pulsa Net (v5.3 - Inline) sedang berjalan...")
+    print("🤖 Bot Pulsa Net (v6.0 - Profesional) sedang berjalan...")
     app.run_polling()
 
 if __name__ == "__main__":
