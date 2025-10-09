@@ -2,7 +2,7 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet_secure.py
 # Developer: Farid Fauzi
-# Versi: 4.0 (Integrasi Semua Paket & Deskripsi Dinamis)
+# Versi: 4.1 (Perbaikan Error JobQueue)
 # ============================================
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -392,10 +392,8 @@ async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # 🚀 Jalankan Bot
 # =============================
 def main():
-    jakarta_tz = ZoneInfo("Asia/Jakarta")
     app = Application.builder().token(TOKEN).build()
-    app.job_queue.scheduler.configure(timezone=jakarta_tz)
-
+    
     # Handler untuk /start
     app.add_handler(CommandHandler("start", start))
     
@@ -413,8 +411,9 @@ def main():
     # Handler untuk kembali ke menu utama
     app.add_handler(CallbackQueryHandler(back_to_menu, pattern='^back_to_start$'))
 
-    print("🤖 Bot Pulsa Net (v4.0) sedang berjalan...")
+    print("🤖 Bot Pulsa Net (v4.1) sedang berjalan...")
     app.run_polling()
 
 if __name__ == "__main__":
     main()
+
