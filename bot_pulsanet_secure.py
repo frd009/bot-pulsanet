@@ -2,7 +2,7 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet_secure.py
 # Developer: Farid Fauzi
-# Versi: 7.0 (Profesional, Deskripsi Terintegrasi & UI Ditingkatkan)
+# Versi: 7.1 (Fitur Cek Kuota & Penyempurnaan UI)
 # ============================================
 
 import os
@@ -250,8 +250,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = [
         [InlineKeyboardButton("📶 Paket Data", callback_data="main_paket"), InlineKeyboardButton("💰 Pulsa", callback_data="main_pulsa")],
-        [InlineKeyboardButton("🌐 Kunjungi Website Kami", url="https://pulsanet.kesug.com/beli.html")],
-        [InlineKeyboardButton("❔ Bantuan & Kontak Admin", callback_data="main_bantuan")]
+        [InlineKeyboardButton("📊 Cek Kuota XL", callback_data="cek_kuota_xl"), InlineKeyboardButton("❔ Bantuan", callback_data="main_bantuan")],
+        [InlineKeyboardButton("🌐 Kunjungi Website Kami", url="https://pulsanet.kesug.com/beli.html")]
     ]
     text = (f"{greeting}, {user.first_name}!\n\n"
             "Selamat datang di <b>Pulsa Net Bot</b> 🤖, solusi terpercaya untuk kebutuhan pulsa dan paket data Anda. "
@@ -351,6 +351,32 @@ async def show_bantuan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     await query.edit_message_text(PAKET_DESCRIPTIONS["bantuan"], reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali ke Menu Utama", callback_data="back_to_start")]]), parse_mode="HTML", disable_web_page_preview=True)
 
+async def show_cek_kuota_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Menampilkan informasi cara cek kuota XL."""
+    query = update.callback_query
+    await query.answer()
+
+    text = (
+        "📊 <b>Cara Cek Kuota & Paket XL Anda</b>\n\n"
+        "Anda dapat memeriksa sisa kuota dan status paket XL Anda melalui beberapa cara mudah berikut:\n\n"
+        "1️⃣ <b>Melalui Dial (*808#):</b>\n"
+        "   - Buka menu telepon di HP Anda.\n"
+        "   - Ketik <code>*808#</code> lalu tekan Panggil/Call.\n"
+        "   - Ikuti instruksi pada menu yang muncul untuk melihat info kuota.\n\n"
+        "2️⃣ <b>Melalui Aplikasi myXL:</b>\n"
+        "   - Unduh atau buka aplikasi <b>myXL</b> di smartphone Anda.\n"
+        "   - Login dengan nomor XL Anda.\n"
+        "   - Sisa kuota dan detail paket akan langsung terlihat di halaman utama. Ini adalah cara yang paling kami rekomendasikan.\n\n"
+        "3️⃣ <b>Khusus Pengguna Paket Circle:</b>\n"
+        "   - Pastikan Anda memeriksa kuota dari menu <b>XL CIRCLE</b> di bagian bawah aplikasi myXL untuk informasi yang akurat (bukan dari 'Lihat Paket Saya')."
+    )
+    keyboard = [[InlineKeyboardButton("⬅️ Kembali ke Menu Utama", callback_data="back_to_start")]]
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML"
+    )
+    
 # ==============================================================================
 # 🚀 FUNGSI UTAMA UNTUK MENJALANKAN BOT
 # ==============================================================================
@@ -365,13 +391,15 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(start, pattern='^back_to_start$'))
     app.add_handler(CallbackQueryHandler(show_bantuan, pattern='^main_bantuan$'))
+    app.add_handler(CallbackQueryHandler(show_cek_kuota_info, pattern='^cek_kuota_xl$'))
     app.add_handler(CallbackQueryHandler(show_operator_menu, pattern=r'^main_(paket|pulsa)$'))
     app.add_handler(CallbackQueryHandler(show_xl_paket_submenu, pattern=r'^list_paket_xl$'))
     app.add_handler(CallbackQueryHandler(show_product_list, pattern=r'^list_(paket|pulsa)_.+$'))
     app.add_handler(CallbackQueryHandler(show_package_details, pattern=f'^({ "|".join(re.escape(k) for k in ALL_PACKAGES_DATA) })$'))
     
-    print("🤖 Bot Pulsa Net (v7.0 - Profesional) sedang berjalan...")
+    print("🤖 Bot Pulsa Net (v7.1 - Profesional) sedang berjalan...")
     app.run_polling()
 
 if __name__ == "__main__":
     main()
+
