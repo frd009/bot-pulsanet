@@ -2,7 +2,7 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet_secure.py
 # Developer: frd009
-# Versi: 7.3 (Enhanced Layout & Better UX)
+# Versi: 7.2 (Layout Mobile & Integrasi Bot Cek Kuota)
 # ============================================
 
 import os
@@ -114,49 +114,6 @@ def get_products(category=None, product_type=None, special_type=None):
             filtered_items = [item for item in filtered_items if item[1].get('type', '').lower() == product_type.lower()]
     return {key: data['name'] for key, data in filtered_items}
 
-def create_two_column_keyboard(items, callback_prefix="", back_callback=None):
-    """
-    Membuat keyboard dengan layout 2 kolom yang lebih baik untuk mobile.
-    items: list of tuples (text, callback_data) atau list of dicts {'text': ..., 'callback': ...}
-    """
-    keyboard = []
-    
-    # Konversi items ke format uniform
-    if items and isinstance(items[0], tuple):
-        items = [{'text': text, 'callback': callback} for text, callback in items]
-    
-    # Buat baris dengan 2 kolom
-    for i in range(0, len(items), 2):
-        row = []
-        # Kolom pertama
-        item1 = items[i]
-        row.append(InlineKeyboardButton(item1['text'], callback_data=item1['callback']))
-        
-        # Kolom kedua (jika ada)
-        if i + 1 < len(items):
-            item2 = items[i + 1]
-            row.append(InlineKeyboardButton(item2['text'], callback_data=item2['callback']))
-        
-        keyboard.append(row)
-    
-    # Tambahkan tombol back jika ada
-    if back_callback:
-        keyboard.append([InlineKeyboardButton("⬅️ Kembali", callback_data=back_callback)])
-    
-    return keyboard
-
-def format_price(price):
-    """Format harga menjadi format Rupiah yang lebih readable"""
-    return f"Rp{price:,}".replace(",", ".")
-
-def shorten_product_name(name, category):
-    """Mempersingkat nama produk untuk tampilan yang lebih baik di mobile"""
-    # Hapus nama provider di awal
-    name = re.sub(r'^(Tri|Axis|XL|Telkomsel|Indosat|By\.U)\s*', '', name, flags=re.I)
-    # Hapus kata "Paket"
-    name = name.replace('Paket ', '').replace('paket ', '')
-    return name.strip()
-
 # Data kuota spesifik untuk paket Akrab berdasarkan informasi terbaru
 AKRAB_QUOTA_DETAILS = {
     "pkg_305_xl_akrab_mini_v2": {"1": "31GB - 33GB", "2": "33GB - 35GB", "3": "38GB - 40GB", "4": "48GB - 50GB"},
@@ -172,7 +129,7 @@ AKRAB_QUOTA_DETAILS['pkg_304_xl_akrab_mini'] = AKRAB_QUOTA_DETAILS.get('pkg_305_
 # ==============================================================================
 
 def create_header(info):
-    price = format_price(info.get('price', 0))
+    price = f"Rp{info.get('price', 0):,}".replace(",", ".")
     return f"✨ <b>{safe_html(info.get('name', 'N/A'))}</b> ✨\n💵 <b>Harga: {price}</b>\n"
 
 def create_general_description(package_key):
@@ -292,16 +249,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else: greeting = "Selamat Malam 🌙"
 
     keyboard = [
-        [InlineKeyboardButton("📶 Paket Data", callback_data="main_paket"), 
-         InlineKeyboardButton("💰 Pulsa", callback_data="main_pulsa")],
-        [InlineKeyboardButton("📊 Cek Kuota", url="https://t.me/dompetpulsabot"), 
-         InlineKeyboardButton("❔ Bantuan", callback_data="main_bantuan")],
-        [InlineKeyboardButton("🌐 Kunjungi Website", url="https://pulsanet.kesug.com/beli.html")]
+        [InlineKeyboardButton("📶 Paket Data", callback_data="main_paket"), InlineKeyboardButton("💰 Pulsa", callback_data="main_pulsa")],
+        [InlineKeyboardButton("📊 Cek Kuota (via Bot)", url="https://t.me/dompetpulsabot"), InlineKeyboardButton("❔ Bantuan", callback_data="main_bantuan")],
+        [InlineKeyboardButton("🌐 Kunjungi Website Kami", url="https://pulsanet.kesug.com/beli.html")]
     ]
     text = (f"{greeting}, {user.first_name}!\n\n"
             "Selamat datang di <b>Pulsa Net Bot</b> 🤖, solusi terpercaya untuk kebutuhan pulsa dan paket data Anda. "
             "Silakan pilih kategori produk di bawah ini.\n\n"
-            "💡 <i>Untuk daftar produk lengkap, kunjungi website kami.</i>")
+            "Untuk melihat daftar produk yang lebih lengkap, kunjungi website resmi kami.")
     
     if update.callback_query:
         await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
@@ -315,44 +270,26 @@ async def show_operator_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     product_type_key = query.data.split('_')[1]
     product_type_name = "Paket Data" if product_type_key == "paket" else "Pulsa"
+    operators = {"XL": "💙", "Axis": "💜", "Tri": "🧡", "Telkomsel": "❤️", "Indosat": "💛", "By.U": "🖤"}
     
-    operators = [
-        {'text': "💙 XL", 'callback': f"list_{product_type_key}_xl"},
-        {'text': "💜 Axis", 'callback': f"list_{product_type_key}_axis"},
-        {'text': "🧡 Tri", 'callback': f"list_{product_type_key}_tri"},
-        {'text': "❤️ Telkomsel", 'callback': f"list_{product_type_key}_telkomsel"},
-        {'text': "💛 Indosat", 'callback': f"list_{product_type_key}_indosat"},
-        {'text': "🖤 By.U", 'callback': f"list_{product_type_key}_by.u"}
-    ]
+    op_items = list(operators.items())
+    keyboard = []
+    for i in range(0, len(op_items), 2):
+        row = [InlineKeyboardButton(f"{icon} {op}", callback_data=f"list_{product_type_key}_{op.lower()}") for op, icon in op_items[i:i+2]]
+        keyboard.append(row)
+        
+    keyboard.append([InlineKeyboardButton("⬅️ Kembali ke Menu Utama", callback_data="back_to_start")])
     
-    keyboard = create_two_column_keyboard(operators, back_callback="back_to_start")
-    
-    await query.edit_message_text(
-        f"<b>Pilih Provider {product_type_name}</b> 📱\n\n"
-        f"Silakan pilih provider yang Anda gunakan:",
-        reply_markup=InlineKeyboardMarkup(keyboard), 
-        parse_mode="HTML"
-    )
+    await query.edit_message_text(f"Anda memilih kategori <b>{product_type_name}</b>.\nSilakan pilih provider yang Anda gunakan:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
 async def show_xl_paket_submenu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer()
-    
-    xl_paket_types = [
-        {'text': "🤝 Akrab", 'callback': "list_paket_xl_akrab"},
-        {'text': "🥳 Bebas Puas", 'callback': "list_paket_xl_bebaspuas"},
-        {'text': "🌀 Circle", 'callback': "list_paket_xl_circle"},
-        {'text': "🚀 Paket Lainnya", 'callback': "list_paket_xl_paket"}
+    keyboard = [
+        [InlineKeyboardButton("🤝 Akrab", callback_data="list_paket_xl_akrab"), InlineKeyboardButton("🥳 Bebas Puas", callback_data="list_paket_xl_bebaspuas")],
+        [InlineKeyboardButton("🌀 Circle", callback_data="list_paket_xl_circle"), InlineKeyboardButton("🚀 Paket Lainnya", callback_data="list_paket_xl_paket")],
+        [InlineKeyboardButton("⬅️ Kembali ke Provider", callback_data="main_paket")]
     ]
-    
-    keyboard = create_two_column_keyboard(xl_paket_types, back_callback="main_paket")
-    
-    await update.callback_query.edit_message_text(
-        "<b>Pilihan Paket Data XL</b> 💙\n\n"
-        "Kami menyediakan beberapa jenis paket XL yang dapat disesuaikan dengan kebutuhan Anda. "
-        "Silakan pilih jenis paket di bawah ini:",
-        reply_markup=InlineKeyboardMarkup(keyboard), 
-        parse_mode="HTML"
-    )
+    await update.callback_query.edit_message_text("<b>Pilihan Paket Data XL 💙</b>\n\nKami menyediakan beberapa jenis paket XL yang dapat disesuaikan dengan kebutuhan Anda. Silakan pilih jenis paket di bawah ini:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
 async def show_product_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query, data_parts = update.callback_query, update.callback_query.data.split('_')
@@ -367,39 +304,27 @@ async def show_product_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
         products = get_products(category=category_key, special_type=special_type_key)
         title_map = {"akrab": "Paket Akrab", "bebaspuas": "Paket Bebas Puas", "circle": "Paket Circle", "paket": "Paket Lainnya"}
         title = f"<b>{base_title} - {title_map.get(special_type_key)}</b>"
-        subtitle = f"Pilih paket {title_map.get(special_type_key, '')} yang sesuai:"
     else:
         products = get_products(category=category_key, product_type=product_type_key)
         product_name = 'Paket Data' if product_type_key == 'paket' else 'Pulsa'
         title = f"<b>{base_title} - {product_name}</b>"
-        subtitle = f"Pilih {product_name} yang Anda inginkan:"
 
     if not products:
         back_cb = "list_paket_xl" if category_key == 'xl' and product_type_key == 'paket' else f"main_{product_type_key}"
-        await query.edit_message_text(
-            f"Mohon maaf, produk untuk kategori ini belum tersedia.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data=back_cb)]]),
-            parse_mode="HTML"
-        )
+        await query.edit_message_text(f"Mohon maaf, produk untuk kategori ini belum tersedia.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data=back_cb)]]), parse_mode="HTML")
         return
 
     sorted_keys = sorted(products.keys(), key=lambda k: PRICES.get(k, 0))
-    
-    # Buat list items untuk keyboard 2 kolom
-    product_items = []
+    keyboard = []
+    # --- PERUBAHAN DI SINI: Layout 1 kolom untuk mobile ---
     for key in sorted_keys:
-        short_name = shorten_product_name(products[key], category_key)
-        button_text = f"{short_name}\n{format_price(PRICES.get(key, 0))}"
-        product_items.append({'text': button_text, 'callback': key})
-    
+        short_name = re.sub(r'^(Tri|Axis|XL|Telkomsel|Indosat|By\.U)\s*', '', products[key], flags=re.I).replace('Paket ', '')
+        button_text = f"{short_name} - Rp{PRICES.get(key, 0):,}".replace(",", ".")
+        keyboard.append([InlineKeyboardButton(button_text, callback_data=key)])
+        
     back_cb = "list_paket_xl" if category_key == 'xl' and product_type_key == 'paket' else f"main_{product_type_key}"
-    keyboard = create_two_column_keyboard(product_items, back_callback=back_cb)
-    
-    await query.edit_message_text(
-        f"{title}\n\n{subtitle}",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
+    keyboard.append([InlineKeyboardButton("⬅️ Kembali", callback_data=back_cb)])
+    await query.edit_message_text(f"{title}\n\nSilakan pilih produk yang Anda inginkan:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
 async def show_package_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query, package_key = update.callback_query, update.callback_query.data
@@ -414,35 +339,15 @@ async def show_package_details(update: Update, context: ContextTypes.DEFAULT_TYP
     else:
         back_data = f"list_{product_type_key}_{category}"
 
-    keyboard = [
-        [InlineKeyboardButton("🛒 Beli Sekarang", url="https://pulsanet.kesug.com/beli.html")],
-        [InlineKeyboardButton("⬅️ Daftar Produk", callback_data=back_data),
-         InlineKeyboardButton("🏠 Menu Utama", callback_data="back_to_start")]
-    ]
-    
-    await query.edit_message_text(
-        PAKET_DESCRIPTIONS.get(package_key, "Informasi produk tidak ditemukan."),
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML",
-        disable_web_page_preview=True
-    )
+    keyboard = [[InlineKeyboardButton("🛒 Beli Sekarang (Website)", url="https://pulsanet.kesug.com/beli.html")],
+                [InlineKeyboardButton("⬅️ Kembali ke Daftar", callback_data=back_data)],
+                [InlineKeyboardButton("🏠 Menu Utama", callback_data="back_to_start")]]
+    await query.edit_message_text(PAKET_DESCRIPTIONS.get(package_key, "Informasi produk tidak ditemukan."), reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML", disable_web_page_preview=True)
 
 async def show_bantuan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
-    keyboard = [
-        [InlineKeyboardButton("💬 Hubungi Admin", url="https://t.me/hexynos"),
-         InlineKeyboardButton("🌐 Website", url="https://pulsanet.kesug.com/")],
-        [InlineKeyboardButton("⬅️ Kembali ke Menu Utama", callback_data="back_to_start")]
-    ]
-    
-    await query.edit_message_text(
-        PAKET_DESCRIPTIONS["bantuan"],
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML",
-        disable_web_page_preview=True
-    )
+    await query.edit_message_text(PAKET_DESCRIPTIONS["bantuan"], reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali ke Menu Utama", callback_data="back_to_start")]]), parse_mode="HTML", disable_web_page_preview=True)
 
 # ==============================================================================
 # 🚀 FUNGSI UTAMA UNTUK MENJALANKAN BOT
@@ -456,15 +361,15 @@ def main():
     app = Application.builder().token(TOKEN).build()
     
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(start, pattern='^back_to_start))
-    app.add_handler(CallbackQueryHandler(show_bantuan, pattern='^main_bantuan))
-    app.add_handler(CallbackQueryHandler(show_operator_menu, pattern=r'^main_(paket|pulsa)))
-    app.add_handler(CallbackQueryHandler(show_xl_paket_submenu, pattern=r'^list_paket_xl))
-    app.add_handler(CallbackQueryHandler(show_product_list, pattern=r'^list_(paket|pulsa)_.+))
-    app.add_handler(CallbackQueryHandler(show_package_details, pattern=f'^({ "|".join(re.escape(k) for k in ALL_PACKAGES_DATA) })))
+    app.add_handler(CallbackQueryHandler(start, pattern='^back_to_start$'))
+    app.add_handler(CallbackQueryHandler(show_bantuan, pattern='^main_bantuan$'))
+    # Menghapus handler untuk show_cek_kuota_info karena sudah diganti dengan URL
+    app.add_handler(CallbackQueryHandler(show_operator_menu, pattern=r'^main_(paket|pulsa)$'))
+    app.add_handler(CallbackQueryHandler(show_xl_paket_submenu, pattern=r'^list_paket_xl$'))
+    app.add_handler(CallbackQueryHandler(show_product_list, pattern=r'^list_(paket|pulsa)_.+$'))
+    app.add_handler(CallbackQueryHandler(show_package_details, pattern=f'^({ "|".join(re.escape(k) for k in ALL_PACKAGES_DATA) })$'))
     
-    print("🤖 Bot Pulsa Net (v7.3 - Enhanced UI) sedang berjalan...")
-    print("✅ Fitur baru: Layout 2 kolom untuk mobile, UI yang lebih baik")
+    print("🤖 Bot Pulsa Net (v7.2 - Profesional) sedang berjalan...")
     app.run_polling()
 
 if __name__ == "__main__":
