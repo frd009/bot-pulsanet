@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
 
 # ==============================================================================
-# 📦 DATA PRODUK TERKURASI (Tidak diubah)
+# 📦 DATA PRODUK TERKURASI
 # ==============================================================================
 ALL_PACKAGES_RAW = [
     # ============== XL (Paket Spesial dari Awal) ==============
@@ -105,7 +105,7 @@ ALL_PACKAGES_RAW = [
 ]
 
 # ==============================================================================
-# 🛠️ FUNGSI-FUNGSI DATA & UTILITAS (Tidak diubah)
+# 🛠️ FUNGSI-FUNGSI DATA & UTILITAS
 # ==============================================================================
 
 def safe_html(text):
@@ -141,7 +141,7 @@ AKRAB_QUOTA_DETAILS = {
 AKRAB_QUOTA_DETAILS['pkg_304_xl_akrab_mini'] = AKRAB_QUOTA_DETAILS.get('pkg_305_xl_akrab_mini_v2')
 
 # ==============================================================================
-# ✍️ FUNGSI PEMBUAT DESKRIPSI (Tidak diubah)
+# ✍️ FUNGSI PEMBUAT DESKRIPSI
 # ==============================================================================
 
 def create_header(info):
@@ -249,14 +249,13 @@ PAKET_DESCRIPTIONS["bantuan"] = (
 )
 
 # ==============================================================================
-# 📶 KLIEN API UNTUK CEK KUOTA XL (BARU)
+# 📶 KLIEN API UNTUK CEK KUOTA XL
 # ==============================================================================
 
 class XLApiClient:
     BASE_URL = "https://srg-txl-login-controller-service.ext.dp.xl.co.id"
     UTILITY_URL = "https://srg-txl-utility-service.ext.dp.xl.co.id"
     
-    # Header ini ditiru dari request aplikasi MyXL
     BASE_HEADERS = {
         'accept': 'application/json',
         'authorization': 'Basic ZGVtb2NsaWVudDpkZW1vY2xpZW50c2VjcmV0',
@@ -325,7 +324,7 @@ class XLApiClient:
             return "Terjadi kesalahan saat memformat data kuota."
 
 # ==============================================================================
-# 🤖 FUNGSI HANDLER BOT (Diperbarui)
+# 🤖 FUNGSI HANDLER BOT
 # ==============================================================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -355,7 +354,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
-# --- Handler lainnya tetap sama ---
 async def show_operator_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -441,7 +439,7 @@ async def show_bantuan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(PAKET_DESCRIPTIONS["bantuan"], reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali ke Menu Utama", callback_data="back_to_start")]]), parse_mode="HTML", disable_web_page_preview=True)
 
 # ==============================================================================
-# 🔄 HANDLER PERCAKAPAN UNTUK CEK KUOTA XL (BARU)
+# 🔄 HANDLER PERCAKAPAN UNTUK CEK KUOTA XL
 # ==============================================================================
 
 # Definisikan state untuk conversation
@@ -590,3 +588,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
