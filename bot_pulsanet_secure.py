@@ -1,8 +1,8 @@
 # ============================================
 # 🤖 Bot Pulsa Net
-# File: bot_pulsanet_v9.6.py
+# File: bot_pulsanet_v9.7.py
 # Developer: frd009
-# Versi: 9.6 (Continuous Action Loops)
+# Versi: 9.7 (Functional QR Codes & Better UX)
 #
 # CATATAN: Pastikan Anda menginstal semua library yang dibutuhkan
 # dengan menjalankan: pip install -r requirements.txt
@@ -14,7 +14,7 @@ import html
 import warnings
 import random
 import io
-import asyncio # Ditambahkan untuk animasi loading
+import asyncio
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -46,31 +46,24 @@ ALL_PACKAGES_RAW = [
     {'id': 323, 'name': "XL Circle 27–31GB", 'price': 58000, 'category': 'XL', 'type': 'Circle', 'data': '27-31GB', 'validity': '30 Hari', 'details': 'Paket internet XL Circle.'},
 
     # ============== Paket Data Pilihan Lainnya ==============
-    # --- XL ---
     {'id': 219, 'name': "XL Flex S 5GB 28Hari", 'price': 27000, 'category': 'XL', 'type': 'Paket', 'data': '5 GB', 'validity': '28 Hari', 'details': '5GB Nasional, Hingga 3GB Lokal, Nelpon 5 Menit'},
     {'id': 221, 'name': "XL Flex M 10GB 28Hari", 'price': 45000, 'category': 'XL', 'type': 'Paket', 'data': '10 GB', 'validity': '28 Hari', 'details': '10GB Nasional, Hingga 5GB Lokal, Nelpon 5 Menit'},
     {'id': 224, 'name': "XL Flex L Plus 26GB 28Hari", 'price': 75000, 'category': 'XL', 'type': 'Paket', 'data': '26 GB', 'validity': '28 Hari', 'details': '26GB Nasional, Hingga 11GB Lokal, Nelpon 5 Menit'},
-    # --- Tri ---
     {'id': 18, 'name': "Tri Happy 5gb 7hari", 'price': 20000, 'category': 'Tri', 'type': 'Paket', 'data': '5 GB', 'validity': '7 Hari', 'details': 'Kuota 5gb, Berlaku Nasional, 1.5gb Lokal'},
     {'id': 26, 'name': "Tri Happy 11gb 28hari", 'price': 46000, 'category': 'Tri', 'type': 'Paket', 'data': '11 GB', 'validity': '28 Hari', 'details': 'Kuota 11gb, Berlaku Nasional, 6gb Lokal'},
     {'id': 30, 'name': "Tri Happy 42gb 28hari", 'price': 71000, 'category': 'Tri', 'type': 'Paket', 'data': '42 GB', 'validity': '28 Hari', 'details': 'Kuota 42gb, Berlaku Nasional, 8gb Lokal'},
-    # --- Axis ---
     {'id': 71, 'name': "Axis Bronet 2gb 30hari", 'price': 19000, 'category': 'Axis', 'type': 'Paket', 'data': '2 GB', 'validity': '30 Hari', 'details': 'Kuota 2gb, Berlaku Nasional'},
     {'id': 74, 'name': "Axis Bronet 8gb 30hari", 'price': 39000, 'category': 'Axis', 'type': 'Paket', 'data': '8 GB', 'validity': '30 Hari', 'details': 'Kuota 8gb, Berlaku Nasional'},
     {'id': 76, 'name': "Axis Bronet 20gb 30hari", 'price': 73000, 'category': 'Axis', 'type': 'Paket', 'data': '20 GB', 'validity': '30 Hari', 'details': 'Kuota 20gb, Berlaku Nasional'},
-    # --- Indosat ---
     {'id': 181, 'name': "Freedom Internet 6GB 28Hari", 'price': 26000, 'category': 'Indosat', 'type': 'Paket', 'data': '6 GB', 'validity': '28 Hari', 'details': 'Kuota 6GB, Nasional'},
     {'id': 186, 'name': "Freedom Internet 13GB 28Hari", 'price': 52000, 'category': 'Indosat', 'type': 'Paket', 'data': '13 GB', 'validity': '28 Hari', 'details': 'Kuota 13GB, Nasional'},
     {'id': 188, 'name': "Freedom Internet 30GB 28Hari", 'price': 90000, 'category': 'Indosat', 'type': 'Paket', 'data': '30 GB', 'validity': '28 Hari', 'details': 'Kuota 30GB, Nasional'},
-    # --- Telkomsel ---
     {'id': 266, 'name': "Tsel Promo 3gb 30 Hari", 'price': 26000, 'category': 'Telkomsel', 'type': 'Paket', 'data': '3 GB', 'validity': '30 Hari', 'details': '3gb + Bonus Extra Kuota'},
     {'id': 269, 'name': "Tsel Promo 6.5gb 30 Hari", 'price': 57000, 'category': 'Telkomsel', 'type': 'Paket', 'data': '6.5 GB', 'validity': '30 Hari', 'details': '6.5gb + Bonus Extra Kuota'},
     {'id': 271, 'name': "Tsel 8gb 30 Hari", 'price': 68000, 'category': 'Telkomsel', 'type': 'Paket', 'data': '8 GB', 'validity': '30 Hari', 'details': '8gb + Bonus Extra Kuota'},
-    # --- By.U ---
     {'id': 129, 'name': "By.U Promo 9GB 30Hari", 'price': 27000, 'category': 'By.U', 'type': 'Paket', 'data': '9 GB', 'validity': '30 Hari', 'details': 'Kuota 9GB, Nasional'},
     {'id': 132, 'name': "By.U Promo 20GB 30Hari", 'price': 47000, 'category': 'By.U', 'type': 'Paket', 'data': '20 GB', 'validity': '30 Hari', 'details': 'Kuota 20GB, Nasional'},
-
-    # ============== Pulsa Pilihan ==============
+    # Pulsa
     {'id': 247, 'name': "XL Pulsa 10.000", 'price': 11000, 'category': 'XL', 'type': 'Pulsa', 'data': 'Rp 10.000', 'validity': '+15 Hari', 'details': 'Pulsa Reguler 10.000'},
     {'id': 249, 'name': "XL Pulsa 25.000", 'price': 25000, 'category': 'XL', 'type': 'Pulsa', 'data': 'Rp 25.000', 'validity': '+30 Hari', 'details': 'Pulsa Reguler 25.000'},
     {'id': 252, 'name': "XL Pulsa 50.000", 'price': 50000, 'category': 'XL', 'type': 'Pulsa', 'data': 'Rp 50.000', 'validity': '+45 Hari', 'details': 'Pulsa Reguler 50.000'},
@@ -97,7 +90,7 @@ ALL_PACKAGES_RAW = [
 ]
 
 # ==============================================================================
-# 🛠️ FUNGSI-FUNGSI DATA & UTILITAS (Tidak ada perubahan)
+# 🛠️ FUNGSI-FUNGSI DATA & UTILITAS
 # ==============================================================================
 
 def safe_html(text):
@@ -106,6 +99,30 @@ def safe_html(text):
 def create_package_key(pkg):
     name_slug = re.sub(r'[^a-z0-9_]', '', pkg['name'].lower().replace(' ', '_'))
     return f"pkg_{pkg['id']}_{name_slug}"
+
+def format_qr_data(text: str) -> str:
+    """Secara cerdas memformat teks untuk QR code agar dapat ditindaklanjuti."""
+    text = text.strip()
+    
+    # Cek apakah ini URL (termasuk kasus tanpa http/www)
+    # Regex ini mencakup: google.com, www.google.com, http://google.com, https://google.com
+    if not re.match(r'^[a-zA-Z]+://', text) and '.' in text:
+        # Diasumsikan sebagai domain jika memiliki titik dan tidak ada skema protokol
+        if re.match(r'^(www\.|[a-zA-Z0-9-]+\.(com|id|net|org|xyz|co\.id|ac\.id|sch\.id|web\.id|my\.id))', text):
+            return f"https://{text}"
+
+    # Cek apakah ini nomor telepon (format Indonesia)
+    phone_match = re.match(r'^(08|\+628|628)[0-9]{8,12}$', text)
+    if phone_match:
+        number = phone_match.group(0)
+        if number.startswith('08'):
+            number = '+62' + number[1:]
+        elif number.startswith('628'):
+            number = '+' + number
+        return f"tel:{number}"
+
+    # Jika tidak cocok dengan pola di atas, kembalikan sebagai teks biasa
+    return text
 
 ALL_PACKAGES_DATA = {create_package_key(pkg): pkg for pkg in ALL_PACKAGES_RAW}
 PRICES = {key: data['price'] for key, data in ALL_PACKAGES_DATA.items()}
@@ -216,11 +233,10 @@ PAKET_DESCRIPTIONS["bantuan"] = ("<b>Pusat Bantuan & Informasi</b> ❔\n\n"
                                      "📞 <b>Admin:</b> @hexynos\n" "🌐 <b>Website Resmi:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
 
 # ==============================================================================
-# 🤖 FUNGSI HANDLER BOT (VERSI 9.6)
+# 🤖 FUNGSI HANDLER BOT (VERSI 9.7)
 # ==============================================================================
 
 async def track_message(context: ContextTypes.DEFAULT_TYPE, message):
-    """Fungsi terpusat untuk melacak ID pesan dari bot DAN pengguna."""
     if message:
         if 'messages_to_clear' not in context.user_data:
             context.user_data['messages_to_clear'] = []
@@ -228,25 +244,20 @@ async def track_message(context: ContextTypes.DEFAULT_TYPE, message):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    
     if update.message:
         loading_msg = await context.bot.send_message(chat_id=chat_id, text="⏳ Membersihkan sesi sebelumnya...")
         await asyncio.sleep(0.7)
-
         messages_to_clear = context.user_data.get('messages_to_clear', [])
         messages_to_clear.append(loading_msg.message_id)
-        
         for msg_id in set(messages_to_clear):
             try:
                 await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
             except Exception:
                 pass
-
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=update.message.message_id)
         except Exception:
             pass
-        
         context.user_data['messages_to_clear'] = []
 
     user = update.effective_user
@@ -257,12 +268,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif 12 <= hour < 15: greeting = "Selamat Siang 🌤️"
     elif 15 <= hour < 19: greeting = "Selamat Sore 🌥️"
     else: greeting = "Selamat Malam 🌙"
-
     user_info = f"👤: {user.first_name}"
     if user.username:
         user_info += f" (@{user.username})"
     user_info += f"\n🆔: <code>{user.id}</code>"
-    
     keyboard = [
         [InlineKeyboardButton("📶 Paket Data", callback_data="main_paket"), InlineKeyboardButton("💰 Pulsa", callback_data="main_pulsa")],
         [InlineKeyboardButton("🔍 Cek Provider", callback_data="ask_for_number"), InlineKeyboardButton("🖼️ Generator QR", callback_data="ask_for_qr")],
@@ -270,11 +279,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📊 Cek Kuota (via Bot)", url="https://t.me/dompetpulsabot")],
         [InlineKeyboardButton("🌐 Kunjungi Website Kami", url="https://pulsanet.kesug.com/beli.html")]
     ]
-    
     text = (f"{greeting}!\n{user_info}\n\n"
             "Selamat datang di <b>Pulsa Net Bot</b> 🤖, solusi terpercaya untuk kebutuhan pulsa dan paket data Anda.\n\n"
-            "Gunakan menu di bawah untuk membeli produk atau menggunakan fitur lainnya.")
-    
+            "Gunakan tombol di bawah untuk membeli produk atau menggunakan fitur lainnya.")
     if update.callback_query:
         await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
         await update.callback_query.answer()
@@ -300,7 +307,7 @@ async def show_xl_paket_submenu(update: Update, context: ContextTypes.DEFAULT_TY
     await update.callback_query.answer()
     keyboard = [
         [InlineKeyboardButton("🤝 Akrab", callback_data="list_paket_xl_akrab"), InlineKeyboardButton("🥳 Bebas Puas", callback_data="list_paket_xl_bebaspuas")],
-        [InlineKeyboardButton("⭕ Circle", callback_data="list_paket_xl_circle"), InlineKeyboardButton("🚀 Paket Lainnya", callback_data="list_paket_xl_paket")],
+        [InlineKeyboardButton("🌀 Circle", callback_data="list_paket_xl_circle"), InlineKeyboardButton("🚀 Paket Lainnya", callback_data="list_paket_xl_paket")],
         [InlineKeyboardButton("⬅️ Kembali ke Provider", callback_data="main_paket")]
     ]
     await update.callback_query.edit_message_text("<b>Pilihan Paket Data XL 💙</b>\n\nKami menyediakan beberapa jenis paket XL yang dapat disesuaikan dengan kebutuhan Anda. Silakan pilih jenis paket di bawah ini:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
@@ -309,7 +316,7 @@ async def show_product_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query, data_parts = update.callback_query, update.callback_query.data.split('_')
     await query.answer()
     product_type_key, category_key, special_type_key = data_parts[1], data_parts[2], data_parts[3] if len(data_parts) > 3 else None
-    titles = {"tri": "Tri 🌐", "axis": "Axis 🌐", "telkomsel": "Telkomsel 🌐", "indosat": "Indosat 🌐", "by.u": "By.U 🌐", "xl": "XL 🌐"}
+    titles = {"tri": "Tri 🧡", "axis": "Axis 💜", "telkomsel": "Telkomsel ❤️", "indosat": "Indosat 💛", "by.u": "By.U 🖤", "xl": "XL 💙"}
     base_title = titles.get(category_key, '')
     if special_type_key:
         products = get_products(category=category_key, special_type=special_type_key)
@@ -358,20 +365,19 @@ async def show_bantuan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==============================================================================
 
 async def prompt_for_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Meminta input user untuk fitur Cek Provider atau QR Generator."""
     query = update.callback_query
     await query.answer()
-
     action = query.data
     if action == "ask_for_number":
         context.user_data['state'] = 'awaiting_number'
         text = "<b>🔍 Cek Provider Nomor</b>\n\nSilakan kirimkan satu atau beberapa nomor HP yang ingin Anda periksa."
     elif action == "ask_for_qr":
         context.user_data['state'] = 'awaiting_qr_text'
-        text = "<b>🖼️ Generator QR Code</b>\n\nSilakan kirimkan teks atau tautan yang ingin Anda jadikan QR Code."
+        # --- PERUBAHAN: Teks instruksi lebih jelas ---
+        text = ("<b>🖼️ Generator QR Code</b>\n\n"
+                "Kirimkan teks, tautan (misal: <code>google.com</code>), atau nomor HP (misal: <code>08123456789</code>) yang ingin Anda jadikan QR Code.")
     else:
         return
-
     keyboard = [[InlineKeyboardButton("⬅️ Batal & Kembali ke Menu", callback_data="back_to_start")]]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
@@ -379,10 +385,8 @@ def get_provider_info(phone_number: str) -> str:
     cleaned_number = re.sub(r'\D', '', phone_number)
     if cleaned_number.startswith('62'):
         cleaned_number = '0' + cleaned_number[2:]
-
     if not (cleaned_number.startswith('08') and 10 <= len(cleaned_number) <= 13):
         return f"Nomor <code>{safe_html(phone_number)}</code> sepertinya bukan format valid."
-
     prefix = cleaned_number[:4]
     provider_found = "Tidak diketahui"
     for provider, prefixes in PROVIDER_PREFIXES.items():
@@ -391,13 +395,10 @@ def get_provider_info(phone_number: str) -> str:
             break
     if provider_found == "Telkomsel" and prefix in PROVIDER_PREFIXES["By.U"]:
         provider_found = "Telkomsel / By.U"
-
     return (f"Nomor: <code>{safe_html(cleaned_number)}</code>\n"
             f"Provider: <b>{provider_found}</b>")
 
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Menangani pesan teks berdasarkan state (menunggu nomor atau teks QR)."""
-    
     await track_message(context, update.message)
     state = context.user_data.get('state')
     message_text = update.message.text
@@ -411,8 +412,6 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         else:
             sent_msg = await update.message.reply_text("Maaf, saya tidak menemukan format nomor HP yang valid di pesan Anda.")
             await track_message(context, sent_msg)
-        
-        # --- PERUBAHAN: Tawarkan untuk melanjutkan ---
         del context.user_data['state']
         keyboard = [
             [InlineKeyboardButton("🔍 Cek Nomor Lain", callback_data="ask_for_number")],
@@ -433,15 +432,23 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             await asyncio.sleep(0.2)
             await loading_msg.edit_text("⏳ Membuat QR Code [■■■]")
             
-            img = qrcode.make(message_text)
+            # --- PERUBAHAN: Format data secara cerdas ---
+            formatted_text = format_qr_data(message_text)
+            
+            img = qrcode.make(formatted_text)
             bio = io.BytesIO()
             bio.name = 'qrcode.png'
             img.save(bio, 'PNG')
             bio.seek(0)
             
+            # --- PERUBAHAN: Caption yang lebih informatif ---
+            caption_text = f"✅ <b>QR Code Berhasil Dibuat!</b>\n\n<b>Data Asli:</b> <code>{safe_html(message_text)}</code>"
+            if formatted_text != message_text:
+                caption_text += f"\n<b>Format Aksi:</b> <code>{safe_html(formatted_text)}</code>"
+
             sent_photo = await update.message.reply_photo(
                 photo=bio,
-                caption=f"✅ <b>QR Code Berhasil Dibuat!</b>\n\n<b>Data:</b> <code>{safe_html(message_text)}</code>",
+                caption=caption_text,
                 parse_mode="HTML"
             )
             await track_message(context, sent_photo)
@@ -450,7 +457,6 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         except Exception as e:
             await loading_msg.edit_text(f"Terjadi kesalahan saat membuat QR Code: {e}")
 
-        # --- PERUBAHAN: Tawarkan untuk melanjutkan ---
         del context.user_data['state']
         keyboard = [
             [InlineKeyboardButton("🖼️ Buat QR Lain", callback_data="ask_for_qr")],
@@ -497,7 +503,7 @@ async def play_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
          (user_choice == 'paper' and bot_choice == 'rock'):
         result_text = "<b>Kamu Menang!</b> 🎉"
     else:
-        result_text = "<b>Kamu Kalah!</b> 🦾"
+        result_text = "<b>Kamu Kalah!</b> 🤖"
     text = (f"Kamu memilih: {user_choice.capitalize()} {emoji[user_choice]}\n"
             f"Bot memilih: {bot_choice.capitalize()} {emoji[bot_choice]}\n\n{result_text}")
     keyboard = [[InlineKeyboardButton("🔄 Main Lagi", callback_data="main_game")],
@@ -512,26 +518,19 @@ def main():
     TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not TOKEN:
         raise ValueError("Token bot tidak ditemukan! Silakan atur TELEGRAM_BOT_TOKEN di environment variable Anda.")
-
     app = Application.builder().token(TOKEN).build()
-    
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(start, pattern='^back_to_start$'))
     app.add_handler(CallbackQueryHandler(show_bantuan, pattern='^main_bantuan$'))
-    
     app.add_handler(CallbackQueryHandler(show_operator_menu, pattern=r'^main_(paket|pulsa)$'))
     app.add_handler(CallbackQueryHandler(show_xl_paket_submenu, pattern=r'^list_paket_xl$'))
     app.add_handler(CallbackQueryHandler(show_product_list, pattern=r'^list_(paket|pulsa)_.+$'))
-    
     app.add_handler(CallbackQueryHandler(show_package_details, pattern=f'^({"|".join(re.escape(k) for k in ALL_PACKAGES_DATA)})$'))
-
     app.add_handler(CallbackQueryHandler(prompt_for_action, pattern=r'^ask_for_(number|qr)$'))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
-    
     app.add_handler(CallbackQueryHandler(show_game_menu, pattern='^main_game$'))
     app.add_handler(CallbackQueryHandler(play_game, pattern=r'^game_play_(rock|scissors|paper)$'))
-    
-    print("🤖 Bot Pulsa Net (v9.6 - Continuous Action Loops) sedang berjalan...")
+    print("🤖 Bot Pulsa Net (v9.7 - Functional QR Codes & Better UX) sedang berjalan...")
     app.run_polling()
 
 if __name__ == "__main__":
