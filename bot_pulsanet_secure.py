@@ -1,8 +1,11 @@
 # ============================================
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet_updated.py
-# Developer: frd009 & Gemini
-# Versi: 9.0 (Info User, Clear Menu, Cek Provider & QR Generator)
+# Developer: frd009
+# Versi: 9.1 (Clear Chat on Start & Perbaikan)
+#
+# CATATAN: Pastikan Anda menginstal semua library yang dibutuhkan
+# dengan menjalankan: pip install -r requirements.txt
 # ============================================
 
 import os
@@ -212,21 +215,30 @@ PAKET_DESCRIPTIONS["bantuan"] = ("<b>Pusat Bantuan & Informasi</b> ❔\n\n"
                                  "📞 <b>Admin:</b> @hexynos\n" "🌐 <b>Website Resmi:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
 
 # ==============================================================================
-# 🤖 FUNGSI HANDLER BOT (VERSI 9.0)
+# 🤖 FUNGSI HANDLER BOT (VERSI 9.1)
 # ==============================================================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
+    chat_id = update.effective_chat.id
     
-    # --- FITUR BARU: Hapus menu lama saat /start diketik ulang ---
-    if update.message: 
-        last_menu_id = context.user_data.get('main_menu_message_id')
-        if last_menu_id:
+    # --- FITUR BARU: Hapus riwayat untuk tampilan yang bersih ---
+    if update.message: # Hanya jalankan jika dari command /start, bukan callback
+        # 1. Hapus semua pesan bot sebelumnya yang terlacak
+        messages_to_clear = context.user_data.get('messages_to_clear', [])
+        for msg_id in messages_to_clear:
             try:
-                await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=last_menu_id)
-            except Exception as e:
-                print(f"Info: Tidak bisa hapus menu lama (ID: {last_menu_id}). Mungkin sudah dihapus. Error: {e}")
+                await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
+            except Exception:
+                pass # Abaikan jika pesan sudah tidak ada atau error lain
 
+        # 2. Coba hapus pesan "/start" dari pengguna
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=update.message.message_id)
+        except Exception:
+            # Gagal di chat pribadi (ini normal), tapi mungkin berhasil di grup
+            pass
+
+    user = update.effective_user
     jakarta_tz = ZoneInfo("Asia/Jakarta")
     now = datetime.now(jakarta_tz)
     hour = now.hour
@@ -235,13 +247,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif 15 <= hour < 19: greeting = "Selamat Sore 🌥️"
     else: greeting = "Selamat Malam 🌙"
 
-    # --- FITUR BARU: Menampilkan info user yang lebih lengkap ---
     user_info = f"👤: {user.first_name}"
     if user.username:
         user_info += f" (@{user.username})"
     user_info += f"\n🆔: <code>{user.id}</code>"
     
-    # --- FITUR BARU: Tombol Cek Provider & Generator QR ---
     keyboard = [
         [InlineKeyboardButton("📶 Paket Data", callback_data="main_paket"), InlineKeyboardButton("💰 Pulsa", callback_data="main_pulsa")],
         [InlineKeyboardButton("🔍 Cek Provider", callback_data="ask_for_number"), InlineKeyboardButton("🖼️ Generator QR", callback_data="ask_for_qr")],
@@ -259,8 +269,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.callback_query.answer()
     else:
         sent_message = await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-        # Simpan ID menu baru untuk dihapus nanti
-        context.user_data['main_menu_message_id'] = sent_message.message_id
+        # Mulai ulang daftar pesan yang perlu dihapus dengan ID menu baru ini
+        context.user_data['messages_to_clear'] = [sent_message.message_id]
 
 async def show_operator_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -377,24 +387,33 @@ def get_provider_info(phone_number: str) -> str:
 
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Menangani pesan teks berdasarkan state (menunggu nomor atau teks QR)."""
+    
+    def _track_message(msg):
+        if msg:
+            if 'messages_to_clear' not in context.user_data:
+                context.user_data['messages_to_clear'] = []
+            context.user_data['messages_to_clear'].append(msg.message_id)
+
     state = context.user_data.get('state')
     message_text = update.message.text
     
-    # --- Alur jika bot sedang menunggu nomor untuk dicek ---
     if state == 'awaiting_number':
         phone_numbers = re.findall(r'(?:\+62|62|0)8[1-9][0-9]{7,11}\b', message_text)
         if phone_numbers:
             responses = [get_provider_info(num) for num in phone_numbers]
-            await update.message.reply_text("✅ <b>Hasil Pengecekan:</b>\n\n" + "\n\n".join(responses), parse_mode="HTML")
+            sent_msg = await update.message.reply_text("✅ <b>Hasil Pengecekan:</b>\n\n" + "\n\n".join(responses), parse_mode="HTML")
+            _track_message(sent_msg)
         else:
-            await update.message.reply_text("Maaf, saya tidak menemukan format nomor HP yang valid di pesan Anda.")
+            sent_msg = await update.message.reply_text("Maaf, saya tidak menemukan format nomor HP yang valid di pesan Anda.")
+            _track_message(sent_msg)
         
         del context.user_data['state']
-        await update.message.reply_text("Gunakan /start untuk kembali ke menu utama.")
+        sent_msg_2 = await update.message.reply_text("Gunakan /start untuk kembali ke menu utama.")
+        _track_message(sent_msg_2)
 
-    # --- Alur jika bot sedang menunggu teks untuk QR Code ---
     elif state == 'awaiting_qr_text':
-        await update.message.reply_text("⏳ Sedang membuat QR Code...")
+        sent_msg_1 = await update.message.reply_text("⏳ Sedang membuat QR Code...")
+        _track_message(sent_msg_1)
         try:
             img = qrcode.make(message_text)
             bio = io.BytesIO()
@@ -402,27 +421,31 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             img.save(bio, 'PNG')
             bio.seek(0)
             
-            await update.message.reply_photo(
+            sent_photo = await update.message.reply_photo(
                 photo=bio,
                 caption=f"✅ <b>QR Code Berhasil Dibuat!</b>\n\n<b>Data:</b> <code>{safe_html(message_text)}</code>",
                 parse_mode="HTML"
             )
+            _track_message(sent_photo)
         except Exception as e:
-            await update.message.reply_text(f"Terjadi kesalahan saat membuat QR Code: {e}")
+            sent_err_msg = await update.message.reply_text(f"Terjadi kesalahan saat membuat QR Code: {e}")
+            _track_message(sent_err_msg)
 
         del context.user_data['state']
-        await update.message.reply_text("Gunakan /start untuk kembali ke menu utama.")
+        sent_msg_2 = await update.message.reply_text("Gunakan /start untuk kembali ke menu utama.")
+        _track_message(sent_msg_2)
         
-    # --- Alur default jika tidak ada state (deteksi otomatis) ---
     else:
         phone_numbers = re.findall(r'(?:\+62|62|0)8[1-9][0-9]{7,11}\b', message_text)
         if phone_numbers:
             responses = [get_provider_info(num) for num in phone_numbers]
-            await update.message.reply_text("💡 <b>Provider Terdeteksi:</b>\n\n" + "\n\n".join(responses) + 
+            sent_msg = await update.message.reply_text("💡 <b>Provider Terdeteksi:</b>\n\n" + "\n\n".join(responses) + 
                                             "\n\n_Ini adalah fitur deteksi otomatis. Gunakan tombol 'Cek Provider' untuk hasil yang lebih pasti._", 
                                             parse_mode="HTML")
+            _track_message(sent_msg)
         else:
-            await update.message.reply_text("Saya tidak mengerti. Gunakan /start untuk melihat semua perintah yang tersedia.")
+            sent_msg = await update.message.reply_text("Saya tidak mengerti. Gunakan /start untuk melihat semua perintah yang tersedia.")
+            _track_message(sent_msg)
 
 async def show_game_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -477,15 +500,13 @@ def main():
     
     app.add_handler(CallbackQueryHandler(show_package_details, pattern=f'^({"|".join(re.escape(k) for k in ALL_PACKAGES_DATA)})$'))
 
-    # --- Handler untuk Fitur Baru (Cek Nomor & QR) ---
     app.add_handler(CallbackQueryHandler(prompt_for_action, pattern=r'^ask_for_(number|qr)$'))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
     
-    # --- Handler untuk Game ---
     app.add_handler(CallbackQueryHandler(show_game_menu, pattern='^main_game$'))
     app.add_handler(CallbackQueryHandler(play_game, pattern=r'^game_play_(rock|scissors|paper)$'))
     
-    print("🤖 Bot Pulsa Net (v9.0 - Fitur Lengkap) sedang berjalan...")
+    print("🤖 Bot Pulsa Net (v9.1 - Clear Chat) sedang berjalan...")
     app.run_polling()
 
 if __name__ == "__main__":
