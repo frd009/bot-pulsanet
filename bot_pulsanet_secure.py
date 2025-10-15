@@ -1,8 +1,8 @@
 # ============================================
 # 🤖 Bot Pulsa Net
-# File: bot_pulsanet_v9.5.py
+# File: bot_pulsanet_v9.6.py
 # Developer: frd009
-# Versi: 9.5 (Delayed Clearing & Animations)
+# Versi: 9.6 (Continuous Action Loops)
 #
 # CATATAN: Pastikan Anda menginstal semua library yang dibutuhkan
 # dengan menjalankan: pip install -r requirements.txt
@@ -216,7 +216,7 @@ PAKET_DESCRIPTIONS["bantuan"] = ("<b>Pusat Bantuan & Informasi</b> ❔\n\n"
                                      "📞 <b>Admin:</b> @hexynos\n" "🌐 <b>Website Resmi:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
 
 # ==============================================================================
-# 🤖 FUNGSI HANDLER BOT (VERSI 9.5)
+# 🤖 FUNGSI HANDLER BOT (VERSI 9.6)
 # ==============================================================================
 
 async def track_message(context: ContextTypes.DEFAULT_TYPE, message):
@@ -229,35 +229,26 @@ async def track_message(context: ContextTypes.DEFAULT_TYPE, message):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     
-    # --- LOGIKA BARU: Pembersihan riwayat chat yang lebih terpusat ---
-    # Hanya jalankan jika ini adalah command /start baru dari pengguna, 
-    # bukan hasil dari menekan tombol 'kembali' (callback_query).
     if update.message:
-        # --- FITUR BARU: Animasi loading saat membersihkan ---
         loading_msg = await context.bot.send_message(chat_id=chat_id, text="⏳ Membersihkan sesi sebelumnya...")
-        await asyncio.sleep(0.7) # Jeda singkat agar animasi terlihat
+        await asyncio.sleep(0.7)
 
-        # Ambil semua ID pesan yang telah kita lacak (termasuk pesan loading itu sendiri)
         messages_to_clear = context.user_data.get('messages_to_clear', [])
         messages_to_clear.append(loading_msg.message_id)
         
-        # Coba hapus semua pesan yang terlacak
-        for msg_id in set(messages_to_clear): # Gunakan set untuk menghindari duplikat
+        for msg_id in set(messages_to_clear):
             try:
                 await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
             except Exception:
                 pass
 
-        # Hapus juga command /start yang diketik oleh pengguna
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=update.message.message_id)
         except Exception:
             pass
         
-        # Kosongkan daftar pelacakan untuk memulai sesi baru yang bersih
         context.user_data['messages_to_clear'] = []
 
-    # --- Sisa fungsi start (tidak berubah) ---
     user = update.effective_user
     jakarta_tz = ZoneInfo("Asia/Jakarta")
     now = datetime.now(jakarta_tz)
@@ -282,7 +273,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     text = (f"{greeting}!\n{user_info}\n\n"
             "Selamat datang di <b>Pulsa Net Bot</b> 🤖, solusi terpercaya untuk kebutuhan pulsa dan paket data Anda.\n\n"
-            "Gunakan tombol di bawah untuk membeli produk atau menggunakan fitur lainnya.")
+            "Gunakan menu di bawah untuk membeli produk atau menggunakan fitur lainnya.")
     
     if update.callback_query:
         await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
@@ -309,7 +300,7 @@ async def show_xl_paket_submenu(update: Update, context: ContextTypes.DEFAULT_TY
     await update.callback_query.answer()
     keyboard = [
         [InlineKeyboardButton("🤝 Akrab", callback_data="list_paket_xl_akrab"), InlineKeyboardButton("🥳 Bebas Puas", callback_data="list_paket_xl_bebaspuas")],
-        [InlineKeyboardButton("🌀 Circle", callback_data="list_paket_xl_circle"), InlineKeyboardButton("🚀 Paket Lainnya", callback_data="list_paket_xl_paket")],
+        [InlineKeyboardButton("⭕ Circle", callback_data="list_paket_xl_circle"), InlineKeyboardButton("🚀 Paket Lainnya", callback_data="list_paket_xl_paket")],
         [InlineKeyboardButton("⬅️ Kembali ke Provider", callback_data="main_paket")]
     ]
     await update.callback_query.edit_message_text("<b>Pilihan Paket Data XL 💙</b>\n\nKami menyediakan beberapa jenis paket XL yang dapat disesuaikan dengan kebutuhan Anda. Silakan pilih jenis paket di bawah ini:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
@@ -318,7 +309,7 @@ async def show_product_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query, data_parts = update.callback_query, update.callback_query.data.split('_')
     await query.answer()
     product_type_key, category_key, special_type_key = data_parts[1], data_parts[2], data_parts[3] if len(data_parts) > 3 else None
-    titles = {"tri": "Tri 🧡", "axis": "Axis 💜", "telkomsel": "Telkomsel ❤️", "indosat": "Indosat 💛", "by.u": "By.U 🖤", "xl": "XL 💙"}
+    titles = {"tri": "Tri 🌐", "axis": "Axis 🌐", "telkomsel": "Telkomsel 🌐", "indosat": "Indosat 🌐", "by.u": "By.U 🌐", "xl": "XL 🌐"}
     base_title = titles.get(category_key, '')
     if special_type_key:
         products = get_products(category=category_key, special_type=special_type_key)
@@ -407,9 +398,7 @@ def get_provider_info(phone_number: str) -> str:
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Menangani pesan teks berdasarkan state (menunggu nomor atau teks QR)."""
     
-    # --- LOGIKA BARU: Lacak pesan pengguna untuk dihapus nanti saat /start ---
     await track_message(context, update.message)
-    
     state = context.user_data.get('state')
     message_text = update.message.text
     
@@ -423,12 +412,17 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             sent_msg = await update.message.reply_text("Maaf, saya tidak menemukan format nomor HP yang valid di pesan Anda.")
             await track_message(context, sent_msg)
         
+        # --- PERUBAHAN: Tawarkan untuk melanjutkan ---
         del context.user_data['state']
-        sent_msg_2 = await update.message.reply_text("Gunakan /start untuk kembali ke menu utama.")
+        keyboard = [
+            [InlineKeyboardButton("🔍 Cek Nomor Lain", callback_data="ask_for_number")],
+            [InlineKeyboardButton("🏠 Kembali ke Menu Utama", callback_data="back_to_start")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        sent_msg_2 = await update.message.reply_text("Apa yang ingin Anda lakukan selanjutnya?", reply_markup=reply_markup)
         await track_message(context, sent_msg_2)
 
     elif state == 'awaiting_qr_text':
-        # --- FITUR BARU: Animasi loading untuk pembuatan QR ---
         loading_msg = await update.message.reply_text("⏳ Membuat QR Code [   ]")
         await track_message(context, loading_msg)
         try:
@@ -451,18 +445,22 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 parse_mode="HTML"
             )
             await track_message(context, sent_photo)
-            # Hapus pesan loading setelah berhasil
             await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=loading_msg.message_id)
 
         except Exception as e:
             await loading_msg.edit_text(f"Terjadi kesalahan saat membuat QR Code: {e}")
 
+        # --- PERUBAHAN: Tawarkan untuk melanjutkan ---
         del context.user_data['state']
-        sent_msg_2 = await update.message.reply_text("Gunakan /start untuk kembali ke menu utama.")
+        keyboard = [
+            [InlineKeyboardButton("🖼️ Buat QR Lain", callback_data="ask_for_qr")],
+            [InlineKeyboardButton("🏠 Kembali ke Menu Utama", callback_data="back_to_start")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        sent_msg_2 = await update.message.reply_text("Apa yang ingin Anda lakukan selanjutnya?", reply_markup=reply_markup)
         await track_message(context, sent_msg_2)
         
     else:
-        # Perilaku default jika pengguna mengirim teks tanpa state tertentu
         phone_numbers = re.findall(r'(?:\+62|62|0)8[1-9][0-9]{7,11}\b', message_text)
         if phone_numbers:
             responses = [get_provider_info(num) for num in phone_numbers]
@@ -499,7 +497,7 @@ async def play_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
          (user_choice == 'paper' and bot_choice == 'rock'):
         result_text = "<b>Kamu Menang!</b> 🎉"
     else:
-        result_text = "<b>Kamu Kalah!</b> 🤖"
+        result_text = "<b>Kamu Kalah!</b> 🦾"
     text = (f"Kamu memilih: {user_choice.capitalize()} {emoji[user_choice]}\n"
             f"Bot memilih: {bot_choice.capitalize()} {emoji[bot_choice]}\n\n{result_text}")
     keyboard = [[InlineKeyboardButton("🔄 Main Lagi", callback_data="main_game")],
@@ -533,7 +531,7 @@ def main():
     app.add_handler(CallbackQueryHandler(show_game_menu, pattern='^main_game$'))
     app.add_handler(CallbackQueryHandler(play_game, pattern=r'^game_play_(rock|scissors|paper)$'))
     
-    print("🤖 Bot Pulsa Net (v9.5 - Delayed Clearing & Animations) sedang berjalan...")
+    print("🤖 Bot Pulsa Net (v9.6 - Continuous Action Loops) sedang berjalan...")
     app.run_polling()
 
 if __name__ == "__main__":
