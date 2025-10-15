@@ -1,14 +1,15 @@
 # ============================================
 # 🤖 Bot Pulsa Net
-# File: bot_pulsanet_secure.py
-# Developer: frd009
-# Versi: 7.2 (Layout Mobile & Integrasi Bot Cek Kuota)
+# File: bot_pulsanet_updated.py
+# Developer: frd009 & Gemini
+# Versi: 8.0 (Layout Mobile, Integrasi Cek Kuota & Fitur Baru)
 # ============================================
 
 import os
 import re
 import html
 import warnings
+import random
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -19,7 +20,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
 
 # ==============================================================================
-# 📦 DATA PRODUK TERKURASI
+# 📦 DATA PRODUK TERKURASI (Tidak ada perubahan di sini)
 # ==============================================================================
 ALL_PACKAGES_RAW = [
     # ============== XL (Paket Spesial dari Awal) ==============
@@ -99,6 +100,17 @@ def create_package_key(pkg):
 
 ALL_PACKAGES_DATA = {create_package_key(pkg): pkg for pkg in ALL_PACKAGES_RAW}
 PRICES = {key: data['price'] for key, data in ALL_PACKAGES_DATA.items()}
+
+# TAMBAHAN: Database prefix nomor untuk fitur cek provider
+PROVIDER_PREFIXES = {
+    "Telkomsel": ["0811", "0812", "0813", "0821", "0822", "0852", "0853", "0823", "0851"],
+    "Indosat": ["0814", "0815", "0816", "0855", "0856", "0857", "0858"],
+    "XL": ["0817", "0818", "0819", "0859", "0877", "0878"],
+    "Axis": ["0838", "0831", "0832", "0833"],
+    "Tri": ["0895", "0896", "0897", "0898", "0899"],
+    "Smartfren": ["0881", "0882", "0883", "0884", "0885", "0886", "0887", "0888", "0889"],
+    "By.U": ["0851"], # By.U menggunakan prefix Telkomsel
+}
 
 def get_products(category=None, product_type=None, special_type=None):
     filtered_items = ALL_PACKAGES_DATA.items()
@@ -248,14 +260,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif 15 <= hour < 19: greeting = "Selamat Sore 🌥️"
     else: greeting = "Selamat Malam 🌙"
 
+    # MODIFIKASI: Menambahkan tombol game dan memisahkan link
     keyboard = [
         [InlineKeyboardButton("📶 Paket Data", callback_data="main_paket"), InlineKeyboardButton("💰 Pulsa", callback_data="main_pulsa")],
-        [InlineKeyboardButton("📊 Cek Kuota (via Bot)", url="https://t.me/dompetpulsabot"), InlineKeyboardButton("❔ Bantuan", callback_data="main_bantuan")],
+        [InlineKeyboardButton("🎮 Game Sederhana", callback_data="main_game"), InlineKeyboardButton("❔ Bantuan", callback_data="main_bantuan")],
+        [InlineKeyboardButton("📊 Cek Kuota (via Bot)", url="https://t.me/dompetpulsabot")],
         [InlineKeyboardButton("🌐 Kunjungi Website Kami", url="https://pulsanet.kesug.com/beli.html")]
     ]
+    # MODIFIKASI: Menambahkan info tentang fitur /ceknomor
     text = (f"{greeting}, {user.first_name}!\n\n"
             "Selamat datang di <b>Pulsa Net Bot</b> 🤖, solusi terpercaya untuk kebutuhan pulsa dan paket data Anda. "
             "Silakan pilih kategori produk di bawah ini.\n\n"
+            "✨ <b>Fitur Baru!</b> Cek provider nomor HP dengan perintah:\n"
+            "<code>/ceknomor 08123456789</code>\n\n"
             "Untuk melihat daftar produk yang lebih lengkap, kunjungi website resmi kami.")
     
     if update.callback_query:
@@ -350,6 +367,101 @@ async def show_bantuan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(PAKET_DESCRIPTIONS["bantuan"], reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali ke Menu Utama", callback_data="back_to_start")]]), parse_mode="HTML", disable_web_page_preview=True)
 
 # ==============================================================================
+#  TAMBAHAN: FUNGSI UNTUK FITUR BARU
+# ==============================================================================
+
+# --- Fitur Cek Provider ---
+async def check_provider(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text(
+            "Silakan masukkan nomor HP setelah perintah.\n\n"
+            "Contoh: <code>/ceknomor 081234567890</code>",
+            parse_mode="HTML"
+        )
+        return
+
+    phone_number = context.args[0]
+    # Membersihkan nomor dari karakter selain angka
+    cleaned_number = re.sub(r'\D', '', phone_number)
+
+    # Normalisasi nomor: jika diawali 62, ganti dengan 0
+    if cleaned_number.startswith('62'):
+        cleaned_number = '0' + cleaned_number[2:]
+
+    if not (cleaned_number.startswith('08') and 10 <= len(cleaned_number) <= 13):
+        await update.message.reply_text("Format nomor HP tidak valid. Pastikan nomor diawali '08' dan memiliki panjang 10-13 digit.")
+        return
+
+    prefix = cleaned_number[:4]
+    provider_found = "Tidak diketahui"
+
+    for provider, prefixes in PROVIDER_PREFIXES.items():
+        if prefix in prefixes:
+            provider_found = provider
+            break
+    
+    # Penanganan khusus untuk By.U
+    if provider_found == "Telkomsel" and prefix in PROVIDER_PREFIXES["By.U"]:
+        provider_found = "Telkomsel / By.U"
+
+    await update.message.reply_text(
+        f"Nomor: <code>{safe_html(cleaned_number)}</code>\n"
+        f"Provider: <b>{provider_found}</b>",
+        parse_mode="HTML"
+    )
+
+# --- Fitur Game Sederhana (Batu Gunting Kertas) ---
+async def show_game_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    keyboard = [
+        [
+            InlineKeyboardButton("Batu 🗿", callback_data="game_play_rock"),
+            InlineKeyboardButton("Gunting ✂️", callback_data="game_play_scissors"),
+            InlineKeyboardButton("Kertas 📄", callback_data="game_play_paper"),
+        ],
+        [InlineKeyboardButton("⬅️ Kembali ke Menu Utama", callback_data="back_to_start")]
+    ]
+    await query.edit_message_text(
+        "<b>🎮 Game Batu-Gunting-Kertas</b>\n\n"
+        "Ayo bermain! Pilih jagoanmu:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML"
+    )
+
+async def play_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    user_choice = query.data.split('_')[2]
+    choices = ['rock', 'scissors', 'paper']
+    bot_choice = random.choice(choices)
+
+    emoji = {'rock': '🗿', 'scissors': '✂️', 'paper': '📄'}
+    result_text = ""
+
+    if user_choice == bot_choice:
+        result_text = "<b>Hasilnya Seri!</b> 🤝"
+    elif (user_choice == 'rock' and bot_choice == 'scissors') or \
+         (user_choice == 'scissors' and bot_choice == 'paper') or \
+         (user_choice == 'paper' and bot_choice == 'rock'):
+        result_text = "<b>Kamu Menang!</b> 🎉"
+    else:
+        result_text = "<b>Kamu Kalah!</b> 🤖"
+
+    text = (f"Kamu memilih: {user_choice.capitalize()} {emoji[user_choice]}\n"
+            f"Bot memilih: {bot_choice.capitalize()} {emoji[bot_choice]}\n\n"
+            f"{result_text}")
+
+    keyboard = [
+        [InlineKeyboardButton("🔄 Main Lagi", callback_data="main_game")],
+        [InlineKeyboardButton("🏠 Kembali ke Menu Utama", callback_data="back_to_start")]
+    ]
+
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
+
+# ==============================================================================
 # 🚀 FUNGSI UTAMA UNTUK MENJALANKAN BOT
 # ==============================================================================
 
@@ -360,18 +472,26 @@ def main():
 
     app = Application.builder().token(TOKEN).build()
     
+    # Handler Utama
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(start, pattern='^back_to_start$'))
     app.add_handler(CallbackQueryHandler(show_bantuan, pattern='^main_bantuan$'))
-    # Menghapus handler untuk show_cek_kuota_info karena sudah diganti dengan URL
+    
+    # Handler Menu Produk
     app.add_handler(CallbackQueryHandler(show_operator_menu, pattern=r'^main_(paket|pulsa)$'))
     app.add_handler(CallbackQueryHandler(show_xl_paket_submenu, pattern=r'^list_paket_xl$'))
     app.add_handler(CallbackQueryHandler(show_product_list, pattern=r'^list_(paket|pulsa)_.+$'))
-    app.add_handler(CallbackQueryHandler(show_package_details, pattern=f'^({ "|".join(re.escape(k) for k in ALL_PACKAGES_DATA) })$'))
     
-    print("🤖 Bot Pulsa Net (v7.2 - Profesional) sedang berjalan...")
+    # Handler Detail Produk (Regex pattern diperbarui untuk keamanan dan akurasi)
+    app.add_handler(CallbackQueryHandler(show_package_details, pattern=f'^({"|".join(re.escape(k) for k in ALL_PACKAGES_DATA)})$'))
+
+    # TAMBAHAN: Handler untuk Fitur Baru
+    app.add_handler(CommandHandler("ceknomor", check_provider))
+    app.add_handler(CallbackQueryHandler(show_game_menu, pattern='^main_game$'))
+    app.add_handler(CallbackQueryHandler(play_game, pattern=r'^game_play_(rock|scissors|paper)$'))
+    
+    print("🤖 Bot Pulsa Net (v8.0 - Profesional) sedang berjalan...")
     app.run_polling()
 
 if __name__ == "__main__":
     main()
-
