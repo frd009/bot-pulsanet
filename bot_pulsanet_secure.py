@@ -2,7 +2,7 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet_updated.py
 # Developer: frd009
-# Versi: 9.1 (Clear Chat on Start & Perbaikan)
+# Versi: 9.2 (Refined Chat Clearing)
 #
 # CATATAN: Pastikan Anda menginstal semua library yang dibutuhkan
 # dengan menjalankan: pip install -r requirements.txt
@@ -215,7 +215,7 @@ PAKET_DESCRIPTIONS["bantuan"] = ("<b>Pusat Bantuan & Informasi</b> ❔\n\n"
                                  "📞 <b>Admin:</b> @hexynos\n" "🌐 <b>Website Resmi:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
 
 # ==============================================================================
-# 🤖 FUNGSI HANDLER BOT (VERSI 9.1)
+# 🤖 FUNGSI HANDLER BOT (VERSI 9.2)
 # ==============================================================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -223,19 +223,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # --- FITUR BARU: Hapus riwayat untuk tampilan yang bersih ---
     if update.message: # Hanya jalankan jika dari command /start, bukan callback
-        # 1. Hapus semua pesan bot sebelumnya yang terlacak
-        messages_to_clear = context.user_data.get('messages_to_clear', [])
+        # Buat salinan daftar ID untuk di-loop, agar aman
+        messages_to_clear = list(context.user_data.get('messages_to_clear', []))
+        
         for msg_id in messages_to_clear:
             try:
                 await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
             except Exception:
                 pass # Abaikan jika pesan sudah tidak ada atau error lain
 
-        # 2. Coba hapus pesan "/start" dari pengguna
+        # Coba hapus pesan "/start" dari pengguna.
+        # Catatan: Ini hanya akan berhasil jika bot adalah admin di sebuah grup.
+        # Di chat pribadi, ini akan gagal secara diam-diam (ini normal).
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=update.message.message_id)
         except Exception:
-            # Gagal di chat pribadi (ini normal), tapi mungkin berhasil di grup
             pass
 
     user = update.effective_user
@@ -269,7 +271,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.callback_query.answer()
     else:
         sent_message = await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-        # Mulai ulang daftar pesan yang perlu dihapus dengan ID menu baru ini
+        # Mulai ulang daftar pelacakan HANYA dengan ID menu baru ini.
         context.user_data['messages_to_clear'] = [sent_message.message_id]
 
 async def show_operator_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -506,7 +508,7 @@ def main():
     app.add_handler(CallbackQueryHandler(show_game_menu, pattern='^main_game$'))
     app.add_handler(CallbackQueryHandler(play_game, pattern=r'^game_play_(rock|scissors|paper)$'))
     
-    print("🤖 Bot Pulsa Net (v9.1 - Clear Chat) sedang berjalan...")
+    print("🤖 Bot Pulsa Net (v9.2 - Refined Chat Clearing) sedang berjalan...")
     app.run_polling()
 
 if __name__ == "__main__":
