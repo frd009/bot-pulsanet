@@ -1,7 +1,7 @@
 # ============================================
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet_updated.py
-# Developer: frd009 & Gemini
+# Developer: frd009
 # Versi: 9.3 (Comprehensive Chat Clearing)
 #
 # CATATAN: Pastikan Anda menginstal semua library yang dibutuhkan
@@ -255,7 +255,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("📶 Paket Data", callback_data="main_paket"), InlineKeyboardButton("💰 Pulsa", callback_data="main_pulsa")],
         [InlineKeyboardButton("🔍 Cek Provider", callback_data="ask_for_number"), InlineKeyboardButton("🖼️ Generator QR", callback_data="ask_for_qr")],
-        [InlineKeyboardButton("🎮 Game Sederhana", callback_data="main_game"), InlineKeyboardButton("❔ Bantuan", callback_data="main_bantuan")],
+        [InlineKeyboardButton("🎮 Game Sederhana", callback_data="main_game"), InlineKeyboardButton("🆘 Bantuan", callback_data="main_bantuan")],
         [InlineKeyboardButton("📊 Cek Kuota (via Bot)", url="https://t.me/dompetpulsabot")],
         [InlineKeyboardButton("🌐 Kunjungi Website Kami", url="https://pulsanet.kesug.com/beli.html")]
     ]
@@ -277,7 +277,7 @@ async def show_operator_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.answer()
     product_type_key = query.data.split('_')[1]
     product_type_name = "Paket Data" if product_type_key == "paket" else "Pulsa"
-    operators = {"XL": "📱", "Axis": "📱", "Tri": "📱", "Telkomsel": "📱", "Indosat": "📱", "By.U": "🖤"}
+    operators = {"XL": "🌐", "Axis": "🌐", "Tri": "🌐", "Telkomsel": "🌐", "Indosat": "🌐", "By.U": "🌐"}
     op_items = list(operators.items())
     keyboard = []
     for i in range(0, len(op_items), 2):
@@ -519,3 +519,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
