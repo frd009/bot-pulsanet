@@ -1,25 +1,43 @@
+#!/usr/bin/env python
 # ============================================
 # 🤖 Bot Pulsa Net
-# File: bot_pulsanet_secure.py
+# File: bot_pulsanet_integrated.py
 # Developer: frd009
-# Versi: 7.2 (Layout Mobile & Integrasi Bot Cek Kuota)
+# Versi: 8.0 (Integrasi Fitur Cek Kuota XL Internal)
 # ============================================
 
 import os
 import re
 import html
 import warnings
+import json
+import logging
+import requests
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    CallbackQueryHandler,
+    ContextTypes,
+    ConversationHandler,
+    MessageHandler,
+    filters
+)
+
+# Konfigurasi logging untuk debugging
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
 # Menghilangkan peringatan 'pkg_resources is deprecated'
 warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
 
 # ==============================================================================
-# 📦 DATA PRODUK TERKURASI
+# 📦 DATA PRODUK TERKURASI (Tidak diubah)
 # ==============================================================================
 ALL_PACKAGES_RAW = [
     # ============== XL (Paket Spesial dari Awal) ==============
@@ -87,7 +105,7 @@ ALL_PACKAGES_RAW = [
 ]
 
 # ==============================================================================
-# 🛠️ FUNGSI-FUNGSI DATA & UTILITAS
+# 🛠️ FUNGSI-FUNGSI DATA & UTILITAS (Tidak diubah)
 # ==============================================================================
 
 def safe_html(text):
@@ -114,18 +132,16 @@ def get_products(category=None, product_type=None, special_type=None):
             filtered_items = [item for item in filtered_items if item[1].get('type', '').lower() == product_type.lower()]
     return {key: data['name'] for key, data in filtered_items}
 
-# Data kuota spesifik untuk paket Akrab berdasarkan informasi terbaru
 AKRAB_QUOTA_DETAILS = {
     "pkg_305_xl_akrab_mini_v2": {"1": "31GB - 33GB", "2": "33GB - 35GB", "3": "38GB - 40GB", "4": "48GB - 50GB"},
     "pkg_307_xl_akrab_big_v2": {"1": "38GB - 40GB", "2": "40GB - 42GB", "3": "45GB - 47GB", "4": "55GB - 57GB"},
     "pkg_313_xl_akrab_jumbo_v2": {"1": "65GB", "2": "70GB", "3": "83GB", "4": "123GB"},
     "pkg_315_xl_akrab_mega_big_v2": {"1": "88GB - 90GB", "2": "90GB - 92GB", "3": "95GB - 97GB", "4": "105GB - 107GB"},
 }
-# Alias untuk paket non-V2 agar menggunakan detail yang sama
 AKRAB_QUOTA_DETAILS['pkg_304_xl_akrab_mini'] = AKRAB_QUOTA_DETAILS.get('pkg_305_xl_akrab_mini_v2')
 
 # ==============================================================================
-# ✍️ FUNGSI PEMBUAT DESKRIPSI (VERSI PROFESIONAL)
+# ✍️ FUNGSI PEMBUAT DESKRIPSI (Tidak diubah)
 # ==============================================================================
 
 def create_header(info):
@@ -219,7 +235,6 @@ def create_bebaspuas_description(package_key):
         "  - Tersedia bonus kuota yang dapat diklaim di aplikasi myXL (pilih salah satu: YouTube, TikTok, atau Kuota Utama)."
     )
 
-# Pra-generate semua deskripsi untuk efisiensi
 PAKET_DESCRIPTIONS = {key: create_general_description(key) for key in ALL_PACKAGES_DATA}
 for key in get_products(special_type='Akrab'): PAKET_DESCRIPTIONS[key] = create_akrab_description(key)
 for key in get_products(special_type='Circle'): PAKET_DESCRIPTIONS[key] = create_circle_description(key)
@@ -234,7 +249,83 @@ PAKET_DESCRIPTIONS["bantuan"] = (
 )
 
 # ==============================================================================
-# 🤖 FUNGSI HANDLER BOT
+# 📶 KLIEN API UNTUK CEK KUOTA XL (BARU)
+# ==============================================================================
+
+class XLApiClient:
+    BASE_URL = "https://srg-txl-login-controller-service.ext.dp.xl.co.id"
+    UTILITY_URL = "https://srg-txl-utility-service.ext.dp.xl.co.id"
+    
+    # Header ini ditiru dari request aplikasi MyXL
+    BASE_HEADERS = {
+        'accept': 'application/json',
+        'authorization': 'Basic ZGVtb2NsaWVudDpkZW1vY2xpZW50c2VjcmV0',
+        'language': 'en',
+        'version': '4.1.2',
+        'user-agent': 'okhttp/3.12.1',
+    }
+
+    def _make_request(self, method, url, headers_update=None, data=None, params=None):
+        headers = self.BASE_HEADERS.copy()
+        if headers_update:
+            headers.update(headers_update)
+        
+        try:
+            response = requests.request(method, url, headers=headers, data=data, params=params, timeout=15)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error making request to {url}: {e}")
+            return None
+        except json.JSONDecodeError:
+            logger.error(f"Failed to decode JSON from {url}")
+            return None
+
+    def login_request_otp(self, email):
+        """Meminta OTP dikirim ke email."""
+        url = f"{self.BASE_URL}/v2/auth/email/{email}"
+        return self._make_request('POST', url)
+
+    def login_with_otp(self, email, otp):
+        """Verifikasi OTP untuk mendapatkan token."""
+        imei = "000000000000000" # IMEI dummy
+        url = f"{self.BASE_URL}/v2/auth/email/{email}/{otp}/{imei}"
+        return self._make_request('GET', url)
+
+    def check_quota(self, access_token, phone_number):
+        """Mengecek kuota menggunakan access token."""
+        url = f"{self.UTILITY_URL}/v2/package/check/{phone_number}"
+        headers = {'authorization': f'Bearer {access_token}'}
+        return self._make_request('GET', url, headers_update=headers)
+
+    def format_quota_info(self, response_data):
+        """Memformat data kuota dari JSON menjadi teks yang mudah dibaca."""
+        if not response_data or response_data.get("statusCode") != 200:
+            return "Gagal mengambil data kuota atau format respons tidak valid."
+
+        try:
+            data_list = response_data['result']['data']
+            if not data_list:
+                return "Tidak ada paket data aktif yang ditemukan."
+            
+            output = [f"📊 <b>Detail Kuota untuk {response_data['result'].get('msisdn', '')}</b>\n"]
+            current_name = None
+            for item in data_list:
+                name = item.get('name', 'N/A').strip()
+                usage = item.get('usage', 'N/A').strip()
+                
+                if name != current_name:
+                    output.append(f"\n📦 <b>{safe_html(name.upper())}</b>")
+                    current_name = name
+                output.append(f"  - {safe_html(usage)}")
+            
+            return "\n".join(output)
+        except (KeyError, TypeError, IndexError):
+            logger.error("Error parsing quota data structure.")
+            return "Terjadi kesalahan saat memformat data kuota."
+
+# ==============================================================================
+# 🤖 FUNGSI HANDLER BOT (Diperbarui)
 # ==============================================================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -250,7 +341,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = [
         [InlineKeyboardButton("📶 Paket Data", callback_data="main_paket"), InlineKeyboardButton("💰 Pulsa", callback_data="main_pulsa")],
-        [InlineKeyboardButton("📊 Cek Kuota (via Bot)", url="https://t.me/dompetpulsabot"), InlineKeyboardButton("❔ Bantuan", callback_data="main_bantuan")],
+        [InlineKeyboardButton("📊 Cek Kuota XL", callback_data="cek_kuota_start"), InlineKeyboardButton("❔ Bantuan", callback_data="main_bantuan")],
         [InlineKeyboardButton("🌐 Kunjungi Website Kami", url="https://pulsanet.kesug.com/beli.html")]
     ]
     text = (f"{greeting}, {user.first_name}!\n\n"
@@ -264,6 +355,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
+# --- Handler lainnya tetap sama ---
 async def show_operator_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -316,7 +408,6 @@ async def show_product_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     sorted_keys = sorted(products.keys(), key=lambda k: PRICES.get(k, 0))
     keyboard = []
-    # --- PERUBAHAN DI SINI: Layout 1 kolom untuk mobile ---
     for key in sorted_keys:
         short_name = re.sub(r'^(Tri|Axis|XL|Telkomsel|Indosat|By\.U)\s*', '', products[key], flags=re.I).replace('Paket ', '')
         button_text = f"{short_name} - Rp{PRICES.get(key, 0):,}".replace(",", ".")
@@ -350,6 +441,115 @@ async def show_bantuan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(PAKET_DESCRIPTIONS["bantuan"], reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali ke Menu Utama", callback_data="back_to_start")]]), parse_mode="HTML", disable_web_page_preview=True)
 
 # ==============================================================================
+# 🔄 HANDLER PERCAKAPAN UNTUK CEK KUOTA XL (BARU)
+# ==============================================================================
+
+# Definisikan state untuk conversation
+PHONE_NUMBER, EMAIL, OTP = range(3)
+
+# Inisialisasi Klien API
+xl_client = XLApiClient()
+
+async def cek_kuota_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Memulai percakapan cek kuota XL."""
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.edit_message_text(
+            text="📱 Silakan masukkan <b>nomor XL</b> Anda (contoh: 087812345678).",
+            parse_mode="HTML"
+        )
+    else:
+        await update.message.reply_text(
+            "📱 Silakan masukkan <b>nomor XL</b> Anda (contoh: 087812345678).",
+            parse_mode="HTML"
+        )
+    return PHONE_NUMBER
+
+async def received_phone_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Menangani nomor HP yang dimasukkan pengguna."""
+    phone_number_raw = update.message.text
+    # Validasi & normalisasi nomor HP
+    if re.match(r'^08[1-9][0-9]{7,10}$', phone_number_raw):
+        phone_number = "62" + phone_number_raw[1:]
+        context.user_data['phone_number'] = phone_number
+        await update.message.reply_text(
+            "📧 Selanjutnya, masukkan <b>alamat email</b> yang terdaftar di akun MyXL Anda.",
+            parse_mode="HTML"
+        )
+        return EMAIL
+    else:
+        await update.message.reply_text(
+            "❌ Format nomor XL tidak valid. Silakan coba lagi (contoh: 087812345678)."
+        )
+        return PHONE_NUMBER
+
+async def received_email(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Menangani email dan meminta OTP."""
+    email = update.message.text.lower()
+    context.user_data['email'] = email
+    
+    await update.message.reply_text("⏳ Sedang meminta kode OTP, mohon tunggu...")
+
+    response = xl_client.login_request_otp(email)
+    
+    if response and response.get("statusCode") == 200:
+        await update.message.reply_text(
+            "📬 Kode OTP telah dikirim ke email Anda. Silakan masukkan <b>kode OTP</b> di sini.",
+            parse_mode="HTML"
+        )
+        return OTP
+    else:
+        error_msg = response.get("statusDescription", "Gagal meminta OTP.") if response else "Gagal terhubung ke server."
+        await update.message.reply_text(
+            f"❌ Terjadi kesalahan: {safe_html(error_msg)}\n\nSilakan mulai lagi dengan /start."
+        )
+        return ConversationHandler.END
+
+async def received_otp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Menangani OTP dan mengecek kuota."""
+    otp = update.message.text
+    email = context.user_data.get('email')
+    phone_number = context.user_data.get('phone_number')
+
+    if not email or not phone_number:
+        await update.message.reply_text("Sesi berakhir. Silakan mulai lagi dengan /start.")
+        return ConversationHandler.END
+
+    await update.message.reply_text("🔐 Memverifikasi OTP dan mengecek kuota...")
+    
+    login_response = xl_client.login_with_otp(email, otp)
+
+    if login_response and login_response.get("statusCode") == 200:
+        try:
+            access_token = login_response['result']['data']['accessToken']
+            
+            quota_response = xl_client.check_quota(access_token, phone_number)
+            
+            if quota_response:
+                formatted_quota = xl_client.format_quota_info(quota_response)
+                await update.message.reply_text(formatted_quota, parse_mode="HTML")
+            else:
+                await update.message.reply_text("Gagal mengecek kuota setelah login berhasil.")
+        except (KeyError, TypeError):
+             await update.message.reply_text("Gagal memproses respons login. Strukturnya tidak sesuai.")
+    else:
+        error_msg = login_response.get("statusDescription", "OTP salah atau tidak valid.") if login_response else "Gagal terhubung ke server."
+        await update.message.reply_text(f"❌ Verifikasi gagal: {safe_html(error_msg)}")
+
+    await update.message.reply_text("Proses selesai. Kembali ke menu utama dengan /start.")
+    # Membersihkan data pengguna setelah selesai
+    context.user_data.clear()
+    return ConversationHandler.END
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Membatalkan percakapan."""
+    await update.message.reply_text(
+        "Proses cek kuota dibatalkan. Kembali ke menu utama dengan /start."
+    )
+    context.user_data.clear()
+    return ConversationHandler.END
+
+# ==============================================================================
 # 🚀 FUNGSI UTAMA UNTUK MENJALANKAN BOT
 # ==============================================================================
 
@@ -360,16 +560,32 @@ def main():
 
     app = Application.builder().token(TOKEN).build()
     
+    # Handler Percakapan untuk Cek Kuota
+    conv_handler = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(cek_kuota_start, pattern='^cek_kuota_start$'),
+            CommandHandler('cekkuota', cek_kuota_start)
+        ],
+        states={
+            PHONE_NUMBER: [MessageHandler(filters.TEXT & ~filters.COMMAND, received_phone_number)],
+            EMAIL: [MessageHandler(filters.TEXT & ~filters.COMMAND, received_email)],
+            OTP: [MessageHandler(filters.TEXT & ~filters.COMMAND, received_otp)],
+        },
+        fallbacks=[CommandHandler('batal', cancel)],
+    )
+
+    app.add_handler(conv_handler)
+    
+    # Handler lain yang sudah ada
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(start, pattern='^back_to_start$'))
     app.add_handler(CallbackQueryHandler(show_bantuan, pattern='^main_bantuan$'))
-    # Menghapus handler untuk show_cek_kuota_info karena sudah diganti dengan URL
     app.add_handler(CallbackQueryHandler(show_operator_menu, pattern=r'^main_(paket|pulsa)$'))
     app.add_handler(CallbackQueryHandler(show_xl_paket_submenu, pattern=r'^list_paket_xl$'))
     app.add_handler(CallbackQueryHandler(show_product_list, pattern=r'^list_(paket|pulsa)_.+$'))
     app.add_handler(CallbackQueryHandler(show_package_details, pattern=f'^({ "|".join(re.escape(k) for k in ALL_PACKAGES_DATA) })$'))
     
-    print("🤖 Bot Pulsa Net (v7.2 - Profesional) sedang berjalan...")
+    print("🤖 Bot Pulsa Net (v8.0 - Integrasi Cek Kuota) sedang berjalan...")
     app.run_polling()
 
 if __name__ == "__main__":
