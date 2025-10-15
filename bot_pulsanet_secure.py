@@ -1,8 +1,8 @@
 # ============================================
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet_updated.py
-# Developer: frd009
-# Versi: 9.2 (Refined Chat Clearing)
+# Developer: frd009 & Gemini
+# Versi: 9.3 (Comprehensive Chat Clearing)
 #
 # CATATAN: Pastikan Anda menginstal semua library yang dibutuhkan
 # dengan menjalankan: pip install -r requirements.txt
@@ -215,7 +215,7 @@ PAKET_DESCRIPTIONS["bantuan"] = ("<b>Pusat Bantuan & Informasi</b> ❔\n\n"
                                  "📞 <b>Admin:</b> @hexynos\n" "🌐 <b>Website Resmi:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
 
 # ==============================================================================
-# 🤖 FUNGSI HANDLER BOT (VERSI 9.2)
+# 🤖 FUNGSI HANDLER BOT (VERSI 9.3)
 # ==============================================================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -233,8 +233,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass # Abaikan jika pesan sudah tidak ada atau error lain
 
         # Coba hapus pesan "/start" dari pengguna.
-        # Catatan: Ini hanya akan berhasil jika bot adalah admin di sebuah grup.
-        # Di chat pribadi, ini akan gagal secara diam-diam (ini normal).
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=update.message.message_id)
         except Exception:
@@ -279,7 +277,7 @@ async def show_operator_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.answer()
     product_type_key = query.data.split('_')[1]
     product_type_name = "Paket Data" if product_type_key == "paket" else "Pulsa"
-    operators = {"XL": "💙", "Axis": "💜", "Tri": "🧡", "Telkomsel": "❤️", "Indosat": "💛", "By.U": "🖤"}
+    operators = {"XL": "📱", "Axis": "📱", "Tri": "📱", "Telkomsel": "📱", "Indosat": "📱", "By.U": "🖤"}
     op_items = list(operators.items())
     keyboard = []
     for i in range(0, len(op_items), 2):
@@ -396,10 +394,17 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 context.user_data['messages_to_clear'] = []
             context.user_data['messages_to_clear'].append(msg.message_id)
 
+    async def _try_delete_user_message():
+        try:
+            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.message_id)
+        except Exception:
+            pass # Gagal jika bot tidak punya izin (misal: di chat pribadi)
+
     state = context.user_data.get('state')
     message_text = update.message.text
     
     if state == 'awaiting_number':
+        await _try_delete_user_message()
         phone_numbers = re.findall(r'(?:\+62|62|0)8[1-9][0-9]{7,11}\b', message_text)
         if phone_numbers:
             responses = [get_provider_info(num) for num in phone_numbers]
@@ -414,6 +419,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         _track_message(sent_msg_2)
 
     elif state == 'awaiting_qr_text':
+        await _try_delete_user_message()
         sent_msg_1 = await update.message.reply_text("⏳ Sedang membuat QR Code...")
         _track_message(sent_msg_1)
         try:
@@ -508,7 +514,7 @@ def main():
     app.add_handler(CallbackQueryHandler(show_game_menu, pattern='^main_game$'))
     app.add_handler(CallbackQueryHandler(play_game, pattern=r'^game_play_(rock|scissors|paper)$'))
     
-    print("🤖 Bot Pulsa Net (v9.2 - Refined Chat Clearing) sedang berjalan...")
+    print("🤖 Bot Pulsa Net (v9.3 - Comprehensive Chat Clearing) sedang berjalan...")
     app.run_polling()
 
 if __name__ == "__main__":
