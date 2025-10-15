@@ -1,8 +1,8 @@
 # ============================================
 # 🤖 Bot Pulsa Net
-# File: bot_pulsanet_v9.4.py
+# File: bot_pulsanet_v9.5.py
 # Developer: frd009
-# Versi: 9.4 (Targeted Start Clearing)
+# Versi: 9.5 (Delayed Clearing & Animations)
 #
 # CATATAN: Pastikan Anda menginstal semua library yang dibutuhkan
 # dengan menjalankan: pip install -r requirements.txt
@@ -14,6 +14,7 @@ import html
 import warnings
 import random
 import io
+import asyncio # Ditambahkan untuk animasi loading
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -215,11 +216,11 @@ PAKET_DESCRIPTIONS["bantuan"] = ("<b>Pusat Bantuan & Informasi</b> ❔\n\n"
                                      "📞 <b>Admin:</b> @hexynos\n" "🌐 <b>Website Resmi:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
 
 # ==============================================================================
-# 🤖 FUNGSI HANDLER BOT (VERSI 9.4)
+# 🤖 FUNGSI HANDLER BOT (VERSI 9.5)
 # ==============================================================================
 
 async def track_message(context: ContextTypes.DEFAULT_TYPE, message):
-    """Fungsi terpusat untuk melacak ID pesan yang dikirim oleh bot."""
+    """Fungsi terpusat untuk melacak ID pesan dari bot DAN pengguna."""
     if message:
         if 'messages_to_clear' not in context.user_data:
             context.user_data['messages_to_clear'] = []
@@ -232,15 +233,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Hanya jalankan jika ini adalah command /start baru dari pengguna, 
     # bukan hasil dari menekan tombol 'kembali' (callback_query).
     if update.message:
-        # Ambil semua ID pesan yang telah kita lacak di sesi sebelumnya
+        # --- FITUR BARU: Animasi loading saat membersihkan ---
+        loading_msg = await context.bot.send_message(chat_id=chat_id, text="⏳ Membersihkan sesi sebelumnya...")
+        await asyncio.sleep(0.7) # Jeda singkat agar animasi terlihat
+
+        # Ambil semua ID pesan yang telah kita lacak (termasuk pesan loading itu sendiri)
         messages_to_clear = context.user_data.get('messages_to_clear', [])
+        messages_to_clear.append(loading_msg.message_id)
         
         # Coba hapus semua pesan yang terlacak
-        for msg_id in messages_to_clear:
+        for msg_id in set(messages_to_clear): # Gunakan set untuk menghindari duplikat
             try:
                 await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
             except Exception:
-                pass  # Abaikan jika pesan sudah terhapus atau error lain
+                pass
 
         # Hapus juga command /start yang diketik oleh pengguna
         try:
@@ -283,7 +289,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.callback_query.answer()
     else:
         sent_message = await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-        # --- LOGIKA BARU: Mulai pelacakan baru HANYA dengan pesan menu ini ---
         await track_message(context, sent_message)
 
 async def show_operator_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -402,17 +407,13 @@ def get_provider_info(phone_number: str) -> str:
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Menangani pesan teks berdasarkan state (menunggu nomor atau teks QR)."""
     
-    async def _try_delete_user_message():
-        try:
-            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.message_id)
-        except Exception:
-            pass # Gagal jika bot tidak punya izin
-
+    # --- LOGIKA BARU: Lacak pesan pengguna untuk dihapus nanti saat /start ---
+    await track_message(context, update.message)
+    
     state = context.user_data.get('state')
     message_text = update.message.text
     
     if state == 'awaiting_number':
-        await _try_delete_user_message()
         phone_numbers = re.findall(r'(?:\+62|62|0)8[1-9][0-9]{7,11}\b', message_text)
         if phone_numbers:
             responses = [get_provider_info(num) for num in phone_numbers]
@@ -427,10 +428,17 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         await track_message(context, sent_msg_2)
 
     elif state == 'awaiting_qr_text':
-        await _try_delete_user_message()
-        sent_msg_1 = await update.message.reply_text("⏳ Sedang membuat QR Code...")
-        await track_message(context, sent_msg_1)
+        # --- FITUR BARU: Animasi loading untuk pembuatan QR ---
+        loading_msg = await update.message.reply_text("⏳ Membuat QR Code [   ]")
+        await track_message(context, loading_msg)
         try:
+            await asyncio.sleep(0.2)
+            await loading_msg.edit_text("⏳ Membuat QR Code [■  ]")
+            await asyncio.sleep(0.2)
+            await loading_msg.edit_text("⏳ Membuat QR Code [■■ ]")
+            await asyncio.sleep(0.2)
+            await loading_msg.edit_text("⏳ Membuat QR Code [■■■]")
+            
             img = qrcode.make(message_text)
             bio = io.BytesIO()
             bio.name = 'qrcode.png'
@@ -443,9 +451,11 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 parse_mode="HTML"
             )
             await track_message(context, sent_photo)
+            # Hapus pesan loading setelah berhasil
+            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=loading_msg.message_id)
+
         except Exception as e:
-            sent_err_msg = await update.message.reply_text(f"Terjadi kesalahan saat membuat QR Code: {e}")
-            await track_message(context, sent_err_msg)
+            await loading_msg.edit_text(f"Terjadi kesalahan saat membuat QR Code: {e}")
 
         del context.user_data['state']
         sent_msg_2 = await update.message.reply_text("Gunakan /start untuk kembali ke menu utama.")
@@ -523,7 +533,7 @@ def main():
     app.add_handler(CallbackQueryHandler(show_game_menu, pattern='^main_game$'))
     app.add_handler(CallbackQueryHandler(play_game, pattern=r'^game_play_(rock|scissors|paper)$'))
     
-    print("🤖 Bot Pulsa Net (v9.4 - Targeted Start Clearing) sedang berjalan...")
+    print("🤖 Bot Pulsa Net (v9.5 - Delayed Clearing & Animations) sedang berjalan...")
     app.run_polling()
 
 if __name__ == "__main__":
