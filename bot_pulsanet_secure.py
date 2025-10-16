@@ -1,8 +1,8 @@
 # ============================================
 # 🤖 Bot Pulsa Net
-# File: bot_pulsanet_v9.7.py
+# File: bot_pulsanet_v9.8.py
 # Developer: frd009
-# Versi: 9.7 (Functional QR Codes & Better UX)
+# Versi: 9.8 (UX Improvement for First Start & Bug Fix)
 #
 # CATATAN: Pastikan Anda menginstal semua library yang dibutuhkan
 # dengan menjalankan: pip install -r requirements.txt
@@ -104,14 +104,10 @@ def format_qr_data(text: str) -> str:
     """Secara cerdas memformat teks untuk QR code agar dapat ditindaklanjuti."""
     text = text.strip()
     
-    # Cek apakah ini URL (termasuk kasus tanpa http/www)
-    # Regex ini mencakup: google.com, www.google.com, http://google.com, https://google.com
     if not re.match(r'^[a-zA-Z]+://', text) and '.' in text:
-        # Diasumsikan sebagai domain jika memiliki titik dan tidak ada skema protokol
         if re.match(r'^(www\.|[a-zA-Z0-9-]+\.(com|id|net|org|xyz|co\.id|ac\.id|sch\.id|web\.id|my\.id))', text):
             return f"https://{text}"
 
-    # Cek apakah ini nomor telepon (format Indonesia)
     phone_match = re.match(r'^(08|\+628|628)[0-9]{8,12}$', text)
     if phone_match:
         number = phone_match.group(0)
@@ -121,7 +117,6 @@ def format_qr_data(text: str) -> str:
             number = '+' + number
         return f"tel:{number}"
 
-    # Jika tidak cocok dengan pola di atas, kembalikan sebagai teks biasa
     return text
 
 ALL_PACKAGES_DATA = {create_package_key(pkg): pkg for pkg in ALL_PACKAGES_RAW}
@@ -160,7 +155,7 @@ AKRAB_QUOTA_DETAILS = {
 AKRAB_QUOTA_DETAILS['pkg_304_xl_akrab_mini'] = AKRAB_QUOTA_DETAILS.get('pkg_305_xl_akrab_mini_v2')
 
 # ==============================================================================
-# ✍️ FUNGSI PEMBUAT DESKRIPSI (Tidak ada perubahan)
+# ✍️ FUNGSI PEMBUAT DESKRIPSI
 # ==============================================================================
 
 def create_header(info):
@@ -233,33 +228,49 @@ PAKET_DESCRIPTIONS["bantuan"] = ("<b>Pusat Bantuan & Informasi</b> ❔\n\n"
                                      "📞 <b>Admin:</b> @hexynos\n" "🌐 <b>Website Resmi:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
 
 # ==============================================================================
-# 🤖 FUNGSI HANDLER BOT (VERSI 9.7)
+# 🤖 FUNGSI HANDLER BOT (VERSI 9.8)
 # ==============================================================================
 
 async def track_message(context: ContextTypes.DEFAULT_TYPE, message):
+    """Mencatat ID pesan yang dikirim oleh bot untuk dibersihkan nanti."""
     if message:
         if 'messages_to_clear' not in context.user_data:
             context.user_data['messages_to_clear'] = []
         context.user_data['messages_to_clear'].append(message.message_id)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Fungsi utama yang menangani perintah /start dan navigasi menu utama."""
     chat_id = update.effective_chat.id
-    if update.message:
-        loading_msg = await context.bot.send_message(chat_id=chat_id, text="⏳ Membersihkan sesi sebelumnya...")
-        await asyncio.sleep(0.7)
-        messages_to_clear = context.user_data.get('messages_to_clear', [])
-        messages_to_clear.append(loading_msg.message_id)
-        for msg_id in set(messages_to_clear):
-            try:
-                await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
-            except Exception:
-                pass
-        try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=update.message.message_id)
-        except Exception:
-            pass
-        context.user_data['messages_to_clear'] = []
 
+    # PERBAIKAN 1: Logika untuk membersihkan sesi secara kondisional
+    # Hanya jalankan pembersihan jika ini BUKAN interaksi pertama kali.
+    # 'is_first_start' is False berarti pengguna sudah pernah menjalankan /start sebelumnya.
+    if context.user_data.get('is_first_start') is False:
+        if update.message:  # Pastikan pembersihan hanya dipicu oleh pesan baru, bukan callback
+            loading_msg = await context.bot.send_message(chat_id=chat_id, text="⏳ Memuat ulang menu...")
+            await asyncio.sleep(0.5)
+
+            messages_to_clear = context.user_data.get('messages_to_clear', [])
+            messages_to_clear.append(loading_msg.message_id)
+            
+            # PERBAIKAN 2: Hapus kode yang menghapus pesan /start dari pengguna.
+            # Baris `update.message.message_id` tidak lagi ditambahkan ke list atau dihapus.
+
+            for msg_id in set(messages_to_clear):
+                try:
+                    await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
+                except Exception:
+                    # Abaikan error jika pesan sudah terhapus atau tidak ditemukan
+                    pass
+
+            # Kosongkan daftar setelah selesai
+            context.user_data['messages_to_clear'] = []
+
+    # Tandai bahwa pengguna sudah pernah memulai bot.
+    # Untuk interaksi selanjutnya, 'is_first_start' akan bernilai False.
+    context.user_data['is_first_start'] = False
+
+    # --- Bagian selanjutnya sama seperti kode Anda ---
     user = update.effective_user
     jakarta_tz = ZoneInfo("Asia/Jakarta")
     now = datetime.now(jakarta_tz)
@@ -268,10 +279,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif 12 <= hour < 15: greeting = "Selamat Siang 🌤️"
     elif 15 <= hour < 19: greeting = "Selamat Sore 🌥️"
     else: greeting = "Selamat Malam 🌙"
+
     user_info = f"👤: {user.first_name}"
     if user.username:
         user_info += f" (@{user.username})"
     user_info += f"\n🆔: <code>{user.id}</code>"
+
     keyboard = [
         [InlineKeyboardButton("📶 Paket Data", callback_data="main_paket"), InlineKeyboardButton("💰 Pulsa", callback_data="main_pulsa")],
         [InlineKeyboardButton("🔍 Cek Provider", callback_data="ask_for_number"), InlineKeyboardButton("🖼️ Generator QR", callback_data="ask_for_qr")],
@@ -279,14 +292,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📊 Cek Kuota (via Bot)", url="https://t.me/dompetpulsabot")],
         [InlineKeyboardButton("🌐 Kunjungi Website Kami", url="https://pulsanet.kesug.com/beli.html")]
     ]
+    
     text = (f"{greeting}!\n{user_info}\n\n"
             "Selamat datang di <b>Pulsa Net Bot</b> 🤖, solusi terpercaya untuk kebutuhan pulsa dan paket data Anda.\n\n"
             "Gunakan tombol di bawah untuk membeli produk atau menggunakan fitur lainnya.")
+
+    # Jika dipicu oleh tombol "Kembali", edit pesan yang ada.
     if update.callback_query:
         await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
         await update.callback_query.answer()
     else:
+        # Jika dipicu oleh /start, kirim pesan baru.
         sent_message = await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+        # Lacak pesan ini agar bisa dihapus di pemanggilan /start berikutnya.
         await track_message(context, sent_message)
 
 async def show_operator_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -373,7 +391,6 @@ async def prompt_for_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = "<b>🔍 Cek Provider Nomor</b>\n\nSilakan kirimkan satu atau beberapa nomor HP yang ingin Anda periksa."
     elif action == "ask_for_qr":
         context.user_data['state'] = 'awaiting_qr_text'
-        # --- PERUBAHAN: Teks instruksi lebih jelas ---
         text = ("<b>🖼️ Generator QR Code</b>\n\n"
                 "Kirimkan teks, tautan (misal: <code>google.com</code>), atau nomor HP (misal: <code>08123456789</code>) yang ingin Anda jadikan QR Code.")
     else:
@@ -422,17 +439,9 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         await track_message(context, sent_msg_2)
 
     elif state == 'awaiting_qr_text':
-        loading_msg = await update.message.reply_text("⏳ Membuat QR Code [   ]")
+        loading_msg = await update.message.reply_text("⏳ Membuat QR Code...")
         await track_message(context, loading_msg)
         try:
-            await asyncio.sleep(0.2)
-            await loading_msg.edit_text("⏳ Membuat QR Code [■  ]")
-            await asyncio.sleep(0.2)
-            await loading_msg.edit_text("⏳ Membuat QR Code [■■ ]")
-            await asyncio.sleep(0.2)
-            await loading_msg.edit_text("⏳ Membuat QR Code [■■■]")
-            
-            # --- PERUBAHAN: Format data secara cerdas ---
             formatted_text = format_qr_data(message_text)
             
             img = qrcode.make(formatted_text)
@@ -441,7 +450,6 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             img.save(bio, 'PNG')
             bio.seek(0)
             
-            # --- PERUBAHAN: Caption yang lebih informatif ---
             caption_text = f"✅ <b>QR Code Berhasil Dibuat!</b>\n\n<b>Data Asli:</b> <code>{safe_html(message_text)}</code>"
             if formatted_text != message_text:
                 caption_text += f"\n<b>Format Aksi:</b> <code>{safe_html(formatted_text)}</code>"
@@ -519,6 +527,8 @@ def main():
     if not TOKEN:
         raise ValueError("Token bot tidak ditemukan! Silakan atur TELEGRAM_BOT_TOKEN di environment variable Anda.")
     app = Application.builder().token(TOKEN).build()
+    
+    # Menambahkan handler
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(start, pattern='^back_to_start$'))
     app.add_handler(CallbackQueryHandler(show_bantuan, pattern='^main_bantuan$'))
@@ -530,7 +540,8 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
     app.add_handler(CallbackQueryHandler(show_game_menu, pattern='^main_game$'))
     app.add_handler(CallbackQueryHandler(play_game, pattern=r'^game_play_(rock|scissors|paper)$'))
-    print("🤖 Bot Pulsa Net (v9.7 - Functional QR Codes & Better UX) sedang berjalan...")
+    
+    print("🤖 Bot Pulsa Net (v9.8 - UX Improvement for First Start & Bug Fix) sedang berjalan...")
     app.run_polling()
 
 if __name__ == "__main__":
