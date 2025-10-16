@@ -2,7 +2,7 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet_secure.py
 # Developer: frd009
-# Versi: 9.11 (Professional Cleanup Animation)
+# Versi: 9.12 (Rapid Cleanup Animation)
 #
 # CATATAN: Pastikan Anda menginstal semua library yang dibutuhkan
 # dengan menjalankan: pip install -r requirements.txt
@@ -228,7 +228,7 @@ PAKET_DESCRIPTIONS["bantuan"] = ("<b>Pusat Bantuan & Informasi</b> ❔\n\n"
                                      "📞 <b>Admin:</b> @hexynos\n" "🌐 <b>Website Resmi:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
 
 # ==============================================================================
-# 🤖 FUNGSI HANDLER BOT (VERSI 9.11)
+# 🤖 FUNGSI HANDLER BOT (VERSI 9.12)
 # ==============================================================================
 
 async def track_message(context: ContextTypes.DEFAULT_TYPE, message):
@@ -245,35 +245,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get('is_first_start') is False:
         if update.message:
             
-            # --- Animasi Loading Profesional (v9.11) ---
-            loading_text = "Membersihkan sesi sebelumnya"
+            # --- Animasi Pembersihan Cepat (v9.12) ---
+            loading_text = "Membersihkan sesi..."
             spinner_frames = ["⢿", "⣻", "⣽", "⣾", "⣷", "⣯", "⣟", "⡿"]
-            progress_bar_length = 12
 
-            initial_text = f"⏳ <b>{safe_html(loading_text)}...</b>"
-            loading_msg = await context.bot.send_message(chat_id=chat_id, text=initial_text, parse_mode='HTML')
+            # Kirim pesan loading awal
+            loading_msg = await context.bot.send_message(chat_id=chat_id, text=f"⏳ {spinner_frames[0]} {safe_html(loading_text)}")
 
-            last_text_sent = initial_text
-            total_steps = 20  # Total iterasi, durasi sekitar 2 detik
-
-            for i in range(total_steps + 1):
+            # Total durasi animasi: 8 langkah * 0.08 detik = ~0.64 detik
+            # Ini adalah durasi yang ideal, terasa cepat namun tetap terlihat.
+            total_steps = 8
+            for i in range(1, total_steps): # Mulai dari 1 karena frame 0 sudah dikirim
                 try:
-                    progress_chars = int((i / total_steps) * progress_bar_length)
-                    bar = "█" * progress_chars + "░" * (progress_bar_length - progress_chars)
                     spinner = spinner_frames[i % len(spinner_frames)]
-                    dots = "." * (1 + (i % 3))
-                    
-                    new_text = (f"⏳ <b>{safe_html(loading_text)}{dots}</b>\n"
-                                f"<code>[{safe_html(bar)}] {safe_html(spinner)}</code>")
-
-                    if new_text != last_text_sent:
-                        await loading_msg.edit_text(text=new_text, parse_mode='HTML')
-                        last_text_sent = new_text
-
-                    await asyncio.sleep(0.1)
+                    await loading_msg.edit_text(text=f"⏳ {spinner} {safe_html(loading_text)}")
+                    await asyncio.sleep(0.08) # Durasi jeda antar frame
                 except Exception:
+                    # Hentikan animasi jika ada error (misal: pesan sudah dihapus manual)
                     break
-            # --- Akhir Animasi ---
+            # --- Akhir Animasi Cepat ---
 
             messages_to_clear = context.user_data.get('messages_to_clear', [])
             messages_to_clear.append(update.message.message_id)
@@ -556,7 +546,7 @@ def main():
     app.add_handler(CallbackQueryHandler(show_game_menu, pattern='^main_game$'))
     app.add_handler(CallbackQueryHandler(play_game, pattern=r'^game_play_(rock|scissors|paper)$'))
     
-    print("🤖 Bot Pulsa Net (v9.11 - Professional Cleanup Animation) sedang berjalan...")
+    print("🤖 Bot Pulsa Net (v9.12 - Rapid Cleanup Animation) sedang berjalan...")
     app.run_polling()
 
 if __name__ == "__main__":
