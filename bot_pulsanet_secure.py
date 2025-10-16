@@ -2,7 +2,7 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet_secure.py
 # Developer: frd009
-# Versi: 9.9 (Re-enable User Command Deletion on Restart)
+# Versi: 9.10 (Smart Cleanup with Loading Animation)
 #
 # CATATAN: Pastikan Anda menginstal semua library yang dibutuhkan
 # dengan menjalankan: pip install -r requirements.txt
@@ -228,7 +228,7 @@ PAKET_DESCRIPTIONS["bantuan"] = ("<b>Pusat Bantuan & Informasi</b> ❔\n\n"
                                      "📞 <b>Admin:</b> @hexynos\n" "🌐 <b>Website Resmi:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
 
 # ==============================================================================
-# 🤖 FUNGSI HANDLER BOT (VERSI 9.9)
+# 🤖 FUNGSI HANDLER BOT (VERSI 9.10)
 # ==============================================================================
 
 async def track_message(context: ContextTypes.DEFAULT_TYPE, message):
@@ -239,34 +239,41 @@ async def track_message(context: ContextTypes.DEFAULT_TYPE, message):
         context.user_data['messages_to_clear'].append(message.message_id)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Fungsi utama yang menangani perintah /start dan navigasi menu utama."""
+    """Fungsi utama yang menangani /start dengan logika pembersihan cerdas."""
     chat_id = update.effective_chat.id
 
-    # PERBAIKAN: Logika pembersihan yang juga mencakup pesan pengguna saat restart.
+    # PERBAIKAN: Logika pembersihan hanya berjalan jika pengguna BUKAN pengguna baru.
     if context.user_data.get('is_first_start') is False:
-        if update.message:  # Hanya dijalankan jika dipicu oleh pesan, bukan tombol callback
-            loading_msg = await context.bot.send_message(chat_id=chat_id, text="⏳ Membersihkan sesi sebelumnya...")
-            await asyncio.sleep(0.5)
+        if update.message:  # Pastikan ini dipicu oleh pesan, bukan tombol
+            
+            # --- Animasi Loading ---
+            animation_frames = ["/", "-", "\\", "|"]
+            loading_text = "⏳ Membersihkan sesi..."
+            loading_msg = await context.bot.send_message(chat_id=chat_id, text=f"{loading_text} {animation_frames[0]}")
+            for frame in animation_frames * 2:  # Loop dua kali agar lebih mulus
+                try:
+                    await loading_msg.edit_text(f"{loading_text} {frame}")
+                    await asyncio.sleep(0.15)
+                except Exception:
+                    break # Hentikan animasi jika ada error
+            # --- Akhir Animasi ---
 
             messages_to_clear = context.user_data.get('messages_to_clear', [])
-
-            # Menambahkan ID pesan '/start' dari pengguna ke dalam daftar hapus
-            messages_to_clear.append(update.message.message_id)
-            messages_to_clear.append(loading_msg.message_id)
+            messages_to_clear.append(update.message.message_id)  # Tambahkan perintah /start pengguna
+            messages_to_clear.append(loading_msg.message_id) # Tambahkan pesan loading
 
             for msg_id in set(messages_to_clear):
                 try:
                     await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
                 except Exception:
-                    # Abaikan error jika pesan sudah terhapus atau tidak ditemukan
-                    pass
+                    pass  # Abaikan error
 
             context.user_data['messages_to_clear'] = []
 
-    # Tandai bahwa pengguna sudah pernah memulai bot.
+    # Tandai bahwa interaksi pertama telah selesai.
     context.user_data['is_first_start'] = False
 
-    # --- Bagian selanjutnya untuk menampilkan menu ---
+    # --- Menampilkan Menu Utama ---
     user = update.effective_user
     jakarta_tz = ZoneInfo("Asia/Jakarta")
     now = datetime.now(jakarta_tz)
@@ -294,13 +301,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Gunakan tombol di bawah untuk membeli produk atau menggunakan fitur lainnya.")
 
     if update.callback_query:
-        # Jika berasal dari tombol callback (misal "Kembali"), edit pesan yang ada.
+        # Jika dari tombol "Kembali", cukup edit pesan menu
         await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
         await update.callback_query.answer()
     else:
-        # Jika dari perintah /start, kirim pesan baru karena yang lama sudah dihapus.
+        # Jika dari /start, kirim pesan menu baru
         sent_message = await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-        # Lacak pesan baru ini untuk dihapus di pemanggilan /start berikutnya.
+        # Lacak pesan ini agar bisa dihapus pada /start berikutnya
         await track_message(context, sent_message)
 
 async def show_operator_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -537,7 +544,7 @@ def main():
     app.add_handler(CallbackQueryHandler(show_game_menu, pattern='^main_game$'))
     app.add_handler(CallbackQueryHandler(play_game, pattern=r'^game_play_(rock|scissors|paper)$'))
     
-    print("🤖 Bot Pulsa Net (v9.9 - Re-enable User Command Deletion) sedang berjalan...")
+    print("🤖 Bot Pulsa Net (v9.10 - Smart Cleanup with Loading Animation) sedang berjalan...")
     app.run_polling()
 
 if __name__ == "__main__":
