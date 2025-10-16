@@ -1,8 +1,8 @@
 # ============================================
 # 🤖 Bot Pulsa Net
-# File: bot_pulsanet_v9.8.py
+# File: bot_pulsanet_secure.py
 # Developer: frd009
-# Versi: 9.8 (UX Improvement for First Start & Bug Fix)
+# Versi: 9.9 (Re-enable User Command Deletion on Restart)
 #
 # CATATAN: Pastikan Anda menginstal semua library yang dibutuhkan
 # dengan menjalankan: pip install -r requirements.txt
@@ -228,7 +228,7 @@ PAKET_DESCRIPTIONS["bantuan"] = ("<b>Pusat Bantuan & Informasi</b> ❔\n\n"
                                      "📞 <b>Admin:</b> @hexynos\n" "🌐 <b>Website Resmi:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
 
 # ==============================================================================
-# 🤖 FUNGSI HANDLER BOT (VERSI 9.8)
+# 🤖 FUNGSI HANDLER BOT (VERSI 9.9)
 # ==============================================================================
 
 async def track_message(context: ContextTypes.DEFAULT_TYPE, message):
@@ -242,19 +242,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Fungsi utama yang menangani perintah /start dan navigasi menu utama."""
     chat_id = update.effective_chat.id
 
-    # PERBAIKAN 1: Logika untuk membersihkan sesi secara kondisional
-    # Hanya jalankan pembersihan jika ini BUKAN interaksi pertama kali.
-    # 'is_first_start' is False berarti pengguna sudah pernah menjalankan /start sebelumnya.
+    # PERBAIKAN: Logika pembersihan yang juga mencakup pesan pengguna saat restart.
     if context.user_data.get('is_first_start') is False:
-        if update.message:  # Pastikan pembersihan hanya dipicu oleh pesan baru, bukan callback
-            loading_msg = await context.bot.send_message(chat_id=chat_id, text="⏳ Memuat ulang menu...")
+        if update.message:  # Hanya dijalankan jika dipicu oleh pesan, bukan tombol callback
+            loading_msg = await context.bot.send_message(chat_id=chat_id, text="⏳ Membersihkan sesi sebelumnya...")
             await asyncio.sleep(0.5)
 
             messages_to_clear = context.user_data.get('messages_to_clear', [])
+
+            # Menambahkan ID pesan '/start' dari pengguna ke dalam daftar hapus
+            messages_to_clear.append(update.message.message_id)
             messages_to_clear.append(loading_msg.message_id)
-            
-            # PERBAIKAN 2: Hapus kode yang menghapus pesan /start dari pengguna.
-            # Baris `update.message.message_id` tidak lagi ditambahkan ke list atau dihapus.
 
             for msg_id in set(messages_to_clear):
                 try:
@@ -263,14 +261,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     # Abaikan error jika pesan sudah terhapus atau tidak ditemukan
                     pass
 
-            # Kosongkan daftar setelah selesai
             context.user_data['messages_to_clear'] = []
 
     # Tandai bahwa pengguna sudah pernah memulai bot.
-    # Untuk interaksi selanjutnya, 'is_first_start' akan bernilai False.
     context.user_data['is_first_start'] = False
 
-    # --- Bagian selanjutnya sama seperti kode Anda ---
+    # --- Bagian selanjutnya untuk menampilkan menu ---
     user = update.effective_user
     jakarta_tz = ZoneInfo("Asia/Jakarta")
     now = datetime.now(jakarta_tz)
@@ -297,14 +293,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Selamat datang di <b>Pulsa Net Bot</b> 🤖, solusi terpercaya untuk kebutuhan pulsa dan paket data Anda.\n\n"
             "Gunakan tombol di bawah untuk membeli produk atau menggunakan fitur lainnya.")
 
-    # Jika dipicu oleh tombol "Kembali", edit pesan yang ada.
     if update.callback_query:
+        # Jika berasal dari tombol callback (misal "Kembali"), edit pesan yang ada.
         await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
         await update.callback_query.answer()
     else:
-        # Jika dipicu oleh /start, kirim pesan baru.
-        sent_message = await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-        # Lacak pesan ini agar bisa dihapus di pemanggilan /start berikutnya.
+        # Jika dari perintah /start, kirim pesan baru karena yang lama sudah dihapus.
+        sent_message = await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+        # Lacak pesan baru ini untuk dihapus di pemanggilan /start berikutnya.
         await track_message(context, sent_message)
 
 async def show_operator_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -541,7 +537,7 @@ def main():
     app.add_handler(CallbackQueryHandler(show_game_menu, pattern='^main_game$'))
     app.add_handler(CallbackQueryHandler(play_game, pattern=r'^game_play_(rock|scissors|paper)$'))
     
-    print("🤖 Bot Pulsa Net (v9.8 - UX Improvement for First Start & Bug Fix) sedang berjalan...")
+    print("🤖 Bot Pulsa Net (v9.9 - Re-enable User Command Deletion) sedang berjalan...")
     app.run_polling()
 
 if __name__ == "__main__":
