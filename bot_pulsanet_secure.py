@@ -1,8 +1,8 @@
 # ============================================
 # 🤖 Bot Pulsa Net
-# File: bot_pulsanet_secure.py
-# Developer: frd009
-# Versi: 9.20 (Peningkatan Fitur Cek Nomor & UI)
+# File: bot_pulsanet_secure_v2.py
+# Developer: frd009 (Ditingkatkan oleh Gemini)
+# Versi: 9.21 (Optimalisasi Pembersihan Chat & Pelacakan Pesan)
 #
 # CATATAN: Pastikan Anda menginstal semua library yang dibutuhkan
 # dengan menjalankan: pip install -r requirements.txt
@@ -277,7 +277,7 @@ PAKET_DESCRIPTIONS["bantuan"] = ("<b>Pusat Bantuan & Informasi</b> 🆘\n\n"
                                  "📞 <b>Admin:</b> @hexynos\n" "🌐 <b>Website Resmi:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
 
 # ==============================================================================
-# 🤖 FUNGSI HANDLER BOT (VERSI 9.20)
+# 🤖 FUNGSI HANDLER BOT (VERSI 9.21)
 # ==============================================================================
 
 async def track_message(context: ContextTypes.DEFAULT_TYPE, message):
@@ -289,39 +289,47 @@ async def track_message(context: ContextTypes.DEFAULT_TYPE, message):
 
 async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Fungsi untuk membersihkan riwayat chat.
-    Dioptimalkan agar tidak terlalu berat dan menambahkan status proses.
+    Fungsi untuk membersihkan riwayat chat secara menyeluruh dan efisien.
     """
     chat_id = update.effective_chat.id
 
+    # 1. Jawab callback query & hapus pesan menu yang diklik
     if update.callback_query:
-        await update.callback_query.answer("Memulai pembersihan riwayat chat...")
+        await update.callback_query.answer("Memulai pembersihan riwayat...")
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=update.callback_query.message.message_id)
         except Exception:
-            pass
+            pass # Lanjutkan jika pesan sudah terhapus
 
-    loading_msg = await context.bot.send_message(chat_id=chat_id, text="🗑️ <b>Sedang Menghapus Riwayat...</b>", parse_mode="HTML")
+    # 2. Kirim pesan status "Sedang menghapus"
+    loading_msg = await context.bot.send_message(chat_id=chat_id, text="🔄 <b>Sedang menghapus pesan...</b>", parse_mode="HTML")
 
+    # 3. Kumpulkan semua ID pesan yang akan dihapus
     messages_to_clear = list(set(context.user_data.get('messages_to_clear', [])))
-
-    delete_tasks = [context.bot.delete_message(chat_id=chat_id, message_id=msg_id) for msg_id in messages_to_clear if msg_id != loading_msg.message_id]
-    results = await asyncio.gather(*delete_tasks, return_exceptions=True)
     
+    # 4. Buat dan jalankan semua task penghapusan secara bersamaan (Optimal)
+    delete_tasks = [
+        context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
+        for msg_id in messages_to_clear
+        if msg_id != loading_msg.message_id
+    ]
+
+    results = await asyncio.gather(*delete_tasks, return_exceptions=True)
     success_count = sum(1 for result in results if not isinstance(result, Exception))
-        
+    
+    # 5. Hapus pesan status
     try:
         await context.bot.delete_message(chat_id=chat_id, message_id=loading_msg.message_id)
     except Exception:
         pass
 
+    # 6. Reset daftar pesan dan kirim konfirmasi
     context.user_data['messages_to_clear'] = []
 
     confirmation_text = (
         f"✅ <b>Pembersihan Selesai!</b>\n\n"
-        f"Sebanyak <b>{success_count}</b> pesan telah dihapus.\n"
-        "Sesi chat Anda telah bersih.\n\n"
-        "Silakan mulai kembali dengan menekan tombol di bawah."
+        f"Berhasil menghapus <b>{success_count}</b> pesan dari sesi ini.\n"
+        "Chat Anda sekarang sudah bersih."
     )
     
     keyboard = [[InlineKeyboardButton("🏠 Kembali ke Menu Utama", callback_data="back_to_start")]]
@@ -331,7 +339,7 @@ async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard), 
         parse_mode="HTML"
     )
-    await track_message(context, sent_msg) 
+    await track_message(context, sent_msg)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -533,6 +541,7 @@ def get_provider_info(phone_number: str) -> str:
     return output
 
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Fungsi yang diperbaiki untuk melacak SEMUA balasan bot agar bisa dihapus."""
     await track_message(context, update.message)
     state = context.user_data.get('state')
     message_text = update.message.text
@@ -542,16 +551,19 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         if phone_numbers:
             responses = [get_provider_info(num) for num in phone_numbers]
-            await update.message.reply_text("✅ <b>Hasil Pengecekan Lengkap:</b>\n\n" + "\n\n".join(responses), parse_mode="HTML")
+            sent_msg1 = await update.message.reply_text("✅ <b>Hasil Pengecekan Lengkap:</b>\n\n" + "\n\n".join(responses), parse_mode="HTML")
+            await track_message(context, sent_msg1)
         else:
-            await update.message.reply_text("Maaf, format nomor telepon tidak valid. Pastikan Anda menyertakan kode negara (misal: +62) atau awalan 08 untuk hasil terbaik.")
+            sent_msg1 = await update.message.reply_text("Maaf, format nomor telepon tidak valid. Pastikan Anda menyertakan kode negara (misal: +62) atau awalan 08 untuk hasil terbaik.")
+            await track_message(context, sent_msg1)
         
         context.user_data.pop('state', None)
         keyboard = [
             [InlineKeyboardButton("🔍 Cek Nomor Lain", callback_data="ask_for_number")],
             [InlineKeyboardButton("🏠 Kembali ke Menu Utama", callback_data="back_to_start")]
         ]
-        await update.message.reply_text("Apa yang ingin Anda lakukan selanjutnya?", reply_markup=InlineKeyboardMarkup(keyboard))
+        sent_msg2 = await update.message.reply_text("Apa yang ingin Anda lakukan selanjutnya?", reply_markup=InlineKeyboardMarkup(keyboard))
+        await track_message(context, sent_msg2)
 
     elif state == 'awaiting_qr_text':
         loading_msg = await update.message.reply_text("⏳ Membuat QR Code...")
@@ -569,7 +581,8 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             if formatted_text != message_text:
                 caption_text += f"\n<b>Format Aksi:</b> <code>{safe_html(formatted_text)}</code>"
 
-            await update.message.reply_photo(photo=bio, caption=caption_text, parse_mode="HTML")
+            sent_photo = await update.message.reply_photo(photo=bio, caption=caption_text, parse_mode="HTML")
+            await track_message(context, sent_photo)
             await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=loading_msg.message_id)
 
         except Exception as e:
@@ -580,17 +593,20 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             [InlineKeyboardButton("🖼️ Buat QR Lain", callback_data="ask_for_qr")],
             [InlineKeyboardButton("🏠 Kembali ke Menu Utama", callback_data="back_to_start")]
         ]
-        await update.message.reply_text("Apa yang ingin Anda lakukan selanjutnya?", reply_markup=InlineKeyboardMarkup(keyboard))
+        sent_msg2 = await update.message.reply_text("Apa yang ingin Anda lakukan selanjutnya?", reply_markup=InlineKeyboardMarkup(keyboard))
+        await track_message(context, sent_msg2)
         
     else:
         phone_numbers = re.findall(r'(?:\+\d{1,4}|0|62)\d{8,15}\b', message_text)
         if phone_numbers:
             responses = [get_provider_info(num) for num in phone_numbers]
-            await update.message.reply_text("💡 <b>Info Nomor Terdeteksi Otomatis:</b>\n\n" + "\n\n".join(responses) +
+            sent_msg = await update.message.reply_text("💡 <b>Info Nomor Terdeteksi Otomatis:</b>\n\n" + "\n\n".join(responses) +
                                                       "\n\n_Untuk pengecekan manual, gunakan tombol 'Cek Info Nomor' dari menu /start._",
                                                        parse_mode="HTML")
+            await track_message(context, sent_msg)
         else:
-            await update.message.reply_text("Perintah tidak dikenal. Silakan gunakan /start untuk melihat semua menu yang tersedia.")
+            sent_msg = await update.message.reply_text("Perintah tidak dikenal. Silakan gunakan /start untuk melihat semua menu yang tersedia.")
+            await track_message(context, sent_msg)
 
 async def show_game_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -648,7 +664,7 @@ def main():
     app.add_handler(CallbackQueryHandler(show_game_menu, pattern='^main_game$'))
     app.add_handler(CallbackQueryHandler(play_game, pattern=r'^game_play_(rock|scissors|paper)$'))
     
-    print("🤖 Bot Pulsa Net (v9.20 - Peningkatan Fitur) sedang berjalan...")
+    print("🤖 Bot Pulsa Net (v9.21 - Optimalisasi Pembersihan) sedang berjalan...")
     app.run_polling()
 
 if __name__ == "__main__":
