@@ -2,7 +2,7 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet_secure.py
 # Developer: frd009
-# Versi: 9.14 (Penambahan Cek Negara)
+# Versi: 9.15 (Penambahan ID Chat & Informasi User)
 #
 # CATATAN: Pastikan Anda menginstal semua library yang dibutuhkan
 # dengan menjalankan: pip install -r requirements.txt
@@ -248,7 +248,7 @@ PAKET_DESCRIPTIONS["bantuan"] = ("<b>Pusat Bantuan & Informasi</b> 🆘\n\n"
                                  "📞 <b>Admin:</b> @hexynos\n" "🌐 <b>Website Resmi:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
 
 # ==============================================================================
-# 🤖 FUNGSI HANDLER BOT (VERSI 9.14 - PENAMBAHAN CEK NEGARA)
+# 🤖 FUNGSI HANDLER BOT (VERSI 9.15 - PENAMBAHAN ID CHAT & INFORMASI USER)
 # ==============================================================================
 
 async def track_message(context: ContextTypes.DEFAULT_TYPE, message):
@@ -267,6 +267,7 @@ async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 1. Jawab query dan hapus pesan tombol (menu) sebelum memulai proses
     if update.callback_query:
+        # Menambahkan informasi singkat pada answer()
         await update.callback_query.answer("Memulai pembersihan riwayat chat. Mohon tunggu...")
         try:
             # Hapus pesan yang memiliki tombol (menu)
@@ -304,10 +305,15 @@ async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         pass
 
-    # 5. Clear riwayat dan kirim konfirmasi
+    # 5. Clear riwayat dan kirim konfirmasi (Menjaga kejelasan info)
     context.user_data['messages_to_clear'] = []
 
-    confirmation_text = f"✅ <b>{success_count}</b> pesan (bot dan perintah Anda) berhasil dibersihkan dari sesi ini."
+    confirmation_text = (
+        f"✅ <b>Pembersihan Selesai!</b>\n\n"
+        f"Sebanyak <b>{success_count}</b> pesan (dari Anda dan bot) berhasil dihapus dari riwayat chat ini.\n\n"
+        "Anda dapat melanjutkan transaksi atau kembali ke menu utama."
+    )
+    
     keyboard = [[InlineKeyboardButton("🏠 Kembali ke Menu Utama", callback_data="back_to_start")]]
 
     # Kirim pesan konfirmasi dan TRACK PESAN INI (penting untuk mencegah error di sesi berikutnya)
@@ -323,7 +329,7 @@ async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Fungsi utama yang menangani /start.
-    Teks sambutan diperbarui agar lebih profesional dan menarik.
+    Menambahkan detail ID Chat dan Username/ID User ke pesan sambutan.
     """
     chat_id = update.effective_chat.id
 
@@ -345,20 +351,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif 15 <= hour < 18: greeting = "Selamat Sore 🌥️"
     else: greeting = "Selamat Malam 🌙"
 
-    # Peningkatan kata-kata sambutan
-    user_info = f"<b>{greeting}, {user.first_name}!</b>"
+    # Peningkatan kata-kata sambutan dan penambahan ID User/Chat
+    username_info = f"<code>@{user.username}</code>" if user.username else "N/A"
     
-    main_text = (
-        f"{user_info}\n\n"
+    user_detail_info = (
+        f"<b>{greeting}, {user.first_name}!</b>\n\n"
         "Selamat datang di <b>Pulsa Net Bot Resmi</b> 🚀.\n"
         "Kami hadir sebagai solusi terdepan untuk pengisian <b>Pulsa, Paket Data, dan Voucher Game</b> dengan harga kompetitif dan proses instan.\n\n"
+        "--- <b>Informasi Akun</b> ---\n"
+        f"👤 <b>Username:</b> {username_info}\n"
+        f"🔑 <b>User ID:</b> <code>{user.id}</code>\n"
+        f"💬 <b>Chat ID:</b> <code>{chat_id}</code>\n"
+        "--------------------------\n\n"
         "Pilih layanan Anda di bawah ini atau jelajahi fitur utilitas kami untuk kemudahan transaksi Anda."
     )
     
     # Tombol Aksi Utama
     keyboard = [
         [InlineKeyboardButton("📶 Paket Data", callback_data="main_paket"), InlineKeyboardButton("💰 Pulsa Reguler", callback_data="main_pulsa")],
-        [InlineKeyboardButton("🔍 Cek Provider/Negara", callback_data="ask_for_number"), InlineKeyboardButton("🖼️ Generator QR", callback_data="ask_for_qr")], # Perubahan teks tombol
+        [InlineKeyboardButton("🔍 Cek Provider/Negara", callback_data="ask_for_number"), InlineKeyboardButton("🖼️ Generator QR", callback_data="ask_for_qr")],
         [InlineKeyboardButton("🎮 Game Sederhana", callback_data="main_game"), InlineKeyboardButton("🆘 Bantuan", callback_data="main_bantuan")],
         [InlineKeyboardButton("🗑️ Bersihkan Riwayat Chat", callback_data="clear_history")], 
         [InlineKeyboardButton("📊 Cek Kuota (via Bot Lain)", url="https://t.me/dompetpulsabot")],
@@ -366,10 +377,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
 
     if update.callback_query:
-        await update.callback_query.edit_message_text(main_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+        await update.callback_query.edit_message_text(user_detail_info, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
         await update.callback_query.answer()
     else:
-        sent_message = await context.bot.send_message(chat_id=chat_id, text=main_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+        sent_message = await context.bot.send_message(chat_id=chat_id, text=user_detail_info, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
         await track_message(context, sent_message)
 
 async def show_operator_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -670,7 +681,7 @@ def main():
     app.add_handler(CallbackQueryHandler(show_game_menu, pattern='^main_game$'))
     app.add_handler(CallbackQueryHandler(play_game, pattern=r'^game_play_(rock|scissors|paper)$'))
     
-    print("🤖 Bot Pulsa Net (v9.14 - Penambahan Cek Negara) sedang berjalan...")
+    print("🤖 Bot Pulsa Net (v9.15 - Penambahan ID Chat & Informasi User) sedang berjalan...")
     app.run_polling()
 
 if __name__ == "__main__":
