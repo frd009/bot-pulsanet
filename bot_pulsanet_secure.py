@@ -2,7 +2,7 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet_secure.py
 # Developer: frd009
-# Versi: 9.15 (Penambahan ID Chat & Informasi User)
+# Versi: 9.17 (Deteksi Provider Internasional)
 #
 # CATATAN: Pastikan Anda menginstal semua library yang dibutuhkan
 # dengan menjalankan: pip install -r requirements.txt
@@ -124,6 +124,7 @@ def format_qr_data(text: str) -> str:
 ALL_PACKAGES_DATA = {create_package_key(pkg): pkg for pkg in ALL_PACKAGES_RAW}
 PRICES = {key: data['price'] for key, data in ALL_PACKAGES_DATA.items()}
 
+# Prefiks Provider Indonesia
 PROVIDER_PREFIXES = {
     "Telkomsel": ["0811", "0812", "0813", "0821", "0822", "0852", "0853", "0823", "0851"],
     "Indosat": ["0814", "0815", "0816", "0855", "0856", "0857", "0858"],
@@ -134,7 +135,29 @@ PROVIDER_PREFIXES = {
     "By.U": ["0851"],
 }
 
-# Daftar kode negara yang disederhanakan (beberapa kode yang umum)
+# Prefiks Provider Internasional (Contoh terbatas)
+# Format: {CC: {Provider_Name: [Prefixes]}}
+INTERNATIONAL_PROVIDER_PREFIXES = {
+    '60': { # Malaysia
+        "Maxis": ["12", "17"],
+        "Celcom": ["13", "19"],
+        "Digi": ["10", "14", "16"],
+        "U Mobile": ["18"],
+    },
+    '65': { # Singapura
+        "Singtel": ["8", "9"], # Prefix 8/9, diikuti 7 digit
+        "StarHub": ["8", "9"],
+        "M1": ["8", "9"],
+    },
+    '1': { # USA/Canada (Sangat kompleks, ini hanya contoh umum)
+        "AT&T": ["201", "202", "203", "204"], # Menggunakan 3 digit NXX (Area Code + Next 3 digits)
+        "Verizon": ["212", "315", "404", "415"],
+        "T-Mobile": ["310", "312", "313", "323"],
+    },
+    # Dapat ditambahkan negara lain di sini
+}
+
+# Daftar kode negara yang disederhanakan
 COUNTRY_CODES = {
     '62': '🇮🇩 Indonesia',
     '60': '🇲🇾 Malaysia',
@@ -148,7 +171,6 @@ COUNTRY_CODES = {
     '49': '🇩🇪 Jerman',
     '86': '🇨🇳 China',
     '81': '🇯🇵 Jepang',
-    # Tambahkan kode negara lain jika diperlukan
 }
 
 
@@ -248,7 +270,7 @@ PAKET_DESCRIPTIONS["bantuan"] = ("<b>Pusat Bantuan & Informasi</b> 🆘\n\n"
                                  "📞 <b>Admin:</b> @hexynos\n" "🌐 <b>Website Resmi:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
 
 # ==============================================================================
-# 🤖 FUNGSI HANDLER BOT (VERSI 9.15 - PENAMBAHAN ID CHAT & INFORMASI USER)
+# 🤖 FUNGSI HANDLER BOT (VERSI 9.17)
 # ==============================================================================
 
 async def track_message(context: ContextTypes.DEFAULT_TYPE, message):
@@ -261,13 +283,12 @@ async def track_message(context: ContextTypes.DEFAULT_TYPE, message):
 async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Fungsi untuk membersihkan riwayat chat.
-    Dioptimalkan agar tidak terlalu berat dan mencegah error keluar dari roomchat.
+    Dioptimalkan agar tidak terlalu berat dan menambahkan status proses.
     """
     chat_id = update.effective_chat.id
 
     # 1. Jawab query dan hapus pesan tombol (menu) sebelum memulai proses
     if update.callback_query:
-        # Menambahkan informasi singkat pada answer()
         await update.callback_query.answer("Memulai pembersihan riwayat chat. Mohon tunggu...")
         try:
             # Hapus pesan yang memiliki tombol (menu)
@@ -275,8 +296,8 @@ async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             pass # Lanjut jika pesan gagal dihapus (misal: sudah terhapus)
 
-    # 2. Kirim pesan loading singkat
-    loading_msg = await context.bot.send_message(chat_id=chat_id, text="⏳ Memproses pembersihan riwayat...")
+    # 2. Kirim pesan loading status (sesuai permintaan "sedan menapus riwayat")
+    loading_msg = await context.bot.send_message(chat_id=chat_id, text="🗑️ <b>Sedang Menghapus Riwayat...</b>", parse_mode="HTML")
 
     messages_to_clear = context.user_data.get('messages_to_clear', [])
     messages_to_clear = list(set(messages_to_clear)) # Hapus duplikat
@@ -310,26 +331,26 @@ async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     confirmation_text = (
         f"✅ <b>Pembersihan Selesai!</b>\n\n"
-        f"Sebanyak <b>{success_count}</b> pesan (dari Anda dan bot) berhasil dihapus dari riwayat chat ini.\n\n"
+        f"Sebanyak <b>{success_count}</b> pesan (dari Anda dan bot) berhasil dihapus dari riwayat chat ini.\n"
+        "Sesi chat telah dibersihkan sepenuhnya.\n\n"
         "Anda dapat melanjutkan transaksi atau kembali ke menu utama."
     )
     
     keyboard = [[InlineKeyboardButton("🏠 Kembali ke Menu Utama", callback_data="back_to_start")]]
 
-    # Kirim pesan konfirmasi dan TRACK PESAN INI (penting untuk mencegah error di sesi berikutnya)
+    # Kirim pesan konfirmasi dan TRACK PESAN INI
     sent_msg = await context.bot.send_message(
         chat_id=chat_id, 
         text=confirmation_text, 
         reply_markup=InlineKeyboardMarkup(keyboard), 
         parse_mode="HTML"
     )
-    # Penting: Pesan konfirmasi ini harus di-track agar bisa dihapus saat clear_history selanjutnya
     await track_message(context, sent_msg) 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Fungsi utama yang menangani /start.
-    Menambahkan detail ID Chat dan Username/ID User ke pesan sambutan.
+    Tampilan greeting diperbarui agar lebih menarik dan profesional.
     """
     chat_id = update.effective_chat.id
 
@@ -346,41 +367,41 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hour = now.hour
     
     # Greeting yang lebih formal dan profesional
-    if 5 <= hour < 11: greeting = "Selamat Pagi ☀️"
-    elif 11 <= hour < 15: greeting = "Selamat Siang 🌤️"
-    elif 15 <= hour < 18: greeting = "Selamat Sore 🌥️"
-    else: greeting = "Selamat Malam 🌙"
+    if 5 <= hour < 11: greeting, icon = "Selamat Pagi", "☀️"
+    elif 11 <= hour < 15: greeting, icon = "Selamat Siang", "🌤️"
+    elif 15 <= hour < 18: greeting, icon = "Selamat Sore", "🌥️"
+    else: greeting, icon = "Selamat Malam", "🌙"
 
-    # Peningkatan kata-kata sambutan dan penambahan ID User/Chat
     username_info = f"<code>@{user.username}</code>" if user.username else "N/A"
     
-    user_detail_info = (
-        f"<b>{greeting}, {user.first_name}!</b>\n\n"
-        "Selamat datang di <b>Pulsa Net Bot Resmi</b> 🚀.\n"
-        "Kami hadir sebagai solusi terdepan untuk pengisian <b>Pulsa, Paket Data, dan Voucher Game</b> dengan harga kompetitif dan proses instan.\n\n"
-        "--- <b>Informasi Akun</b> ---\n"
-        f"👤 <b>Username:</b> {username_info}\n"
-        f"🔑 <b>User ID:</b> <code>{user.id}</code>\n"
-        f"💬 <b>Chat ID:</b> <code>{chat_id}</code>\n"
-        "--------------------------\n\n"
-        "Pilih layanan Anda di bawah ini atau jelajahi fitur utilitas kami untuk kemudahan transaksi Anda."
+    # Teks utama yang lebih baik
+    main_text = (
+        f"{icon} <b>{greeting}, {user.first_name}!</b>\n\n"
+        "Selamat datang di <b>Pulsa Net Bot Resmi</b> 🚀\n"
+        "Solusi terdepan Anda untuk layanan digital: <b>Pulsa, Paket Data, dan Voucher Game</b> dengan harga paling kompetitif dan proses *instan*.\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "🔑 <b>Status Akun</b>\n"
+        f"   ├─ Username: {username_info}\n"
+        f"   ├─ User ID: <code>{user.id}</code>\n"
+        f"   └─ Chat ID: <code>{chat_id}</code>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Silakan pilih menu di bawah untuk memulai transaksi atau mengakses fitur utilitas kami."
     )
     
     # Tombol Aksi Utama
     keyboard = [
         [InlineKeyboardButton("📶 Paket Data", callback_data="main_paket"), InlineKeyboardButton("💰 Pulsa Reguler", callback_data="main_pulsa")],
         [InlineKeyboardButton("🔍 Cek Provider/Negara", callback_data="ask_for_number"), InlineKeyboardButton("🖼️ Generator QR", callback_data="ask_for_qr")],
-        [InlineKeyboardButton("🎮 Game Sederhana", callback_data="main_game"), InlineKeyboardButton("🆘 Bantuan", callback_data="main_bantuan")],
+        [InlineKeyboardButton("🎮 Game Sederhana", callback_data="main_game"), InlineKeyboardButton("🆘 Bantuan & Info", callback_data="main_bantuan")],
         [InlineKeyboardButton("🗑️ Bersihkan Riwayat Chat", callback_data="clear_history")], 
-        [InlineKeyboardButton("📊 Cek Kuota (via Bot Lain)", url="https://t.me/dompetpulsabot")],
         [InlineKeyboardButton("🌐 Kunjungi Website Kami", url="https://pulsanet.kesug.com/beli.html")]
     ]
 
     if update.callback_query:
-        await update.callback_query.edit_message_text(user_detail_info, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+        await update.callback_query.edit_message_text(main_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
         await update.callback_query.answer()
     else:
-        sent_message = await context.bot.send_message(chat_id=chat_id, text=user_detail_info, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+        sent_message = await context.bot.send_message(chat_id=chat_id, text=main_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
         await track_message(context, sent_message)
 
 async def show_operator_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -490,32 +511,23 @@ def get_provider_info(phone_number: str) -> str:
     country_code = None
     
     # Mencoba mencocokkan kode negara (1 sampai 4 digit)
-    match = re.match(r'^(\d{1,4})(.*)', cleaned_number)
-    if match:
-        potential_code = match.group(1)
-        # Cari kode terpanjang yang cocok
-        for code in sorted(COUNTRY_CODES.keys(), key=len, reverse=True):
-            if cleaned_number.startswith(code):
-                country_code = code
-                country_name = COUNTRY_CODES[code]
-                break
+    # Cari kode negara terpanjang yang cocok dari awal nomor
+    for code in sorted(COUNTRY_CODES.keys(), key=len, reverse=True):
+        if cleaned_number.startswith(code):
+            country_code = code
+            country_name = COUNTRY_CODES[code]
+            break
+
+    # 2. Deteksi Provider (Lokal dan Internasional)
+    provider_found = "Tidak diketahui"
+    number_after_cc = cleaned_number[len(country_code):] if country_code else cleaned_number
     
-    # 2. Deteksi Provider (Khusus Indonesia 62)
-    provider_found = "N/A"
-    
-    # Jika Indonesia
-    if country_code == '62' or cleaned_number.startswith('08'):
+    if country_code == '62': # Logika Deteksi Provider Indonesia
         # Normalisasi nomor ke format 08xx... untuk deteksi provider
-        if cleaned_number.startswith('62'):
-            normalized_number = '0' + cleaned_number[2:]
-        elif cleaned_number.startswith('+62'):
-            normalized_number = '0' + cleaned_number[3:]
-        elif cleaned_number.startswith('08'):
-            normalized_number = cleaned_number
-        else:
-            normalized_number = ''
+        normalized_number = '0' + number_after_cc if number_after_cc.startswith('8') else number_after_cc
             
         if normalized_number and 10 <= len(normalized_number) <= 13:
+            # Gunakan 4 digit (08xx) untuk deteksi prefix
             prefix = normalized_number[:4]
             provider_found = "Tidak diketahui"
             for provider, prefixes in PROVIDER_PREFIXES.items():
@@ -525,16 +537,31 @@ def get_provider_info(phone_number: str) -> str:
             if provider_found == "Telkomsel" and prefix in PROVIDER_PREFIXES["By.U"]:
                 provider_found = "Telkomsel / By.U"
     
+    elif country_code in INTERNATIONAL_PROVIDER_PREFIXES: # Logika Deteksi Provider Internasional
+        # Gunakan prefiks operator (misal: 2 digit setelah CC untuk Malaysia)
+        provider_data = INTERNATIONAL_PROVIDER_PREFIXES[country_code]
+        
+        # Mencoba mencocokkan prefix terpanjang yang tersedia di data internasional
+        for length in [4, 3, 2, 1]: # Cari prefix dari panjang 4 hingga 1
+            if len(number_after_cc) >= length:
+                prefix_international = number_after_cc[:length]
+                for provider, prefixes in provider_data.items():
+                    if prefix_international in prefixes:
+                        provider_found = provider
+                        break
+                if provider_found != "Tidak diketahui":
+                    break
+
+        if provider_found == "Tidak diketahui":
+            provider_found = "Tidak diketahui (Prefix " + prefix_international + "...)"
+
     # 3. Format Output
     output = f"Nomor: <code>{safe_html(cleaned_number)}</code>\n"
     output += f"Negara: <b>{country_name}</b>"
-    
-    # Tampilkan Provider hanya jika negara Indonesia
-    if country_code == '62':
-        output += f"\nProvider: <b>{provider_found}</b>"
+    output += f"\nProvider: <b>{provider_found}</b>"
     
     # Kasus nomor tidak valid (terlalu pendek atau prefix tidak dikenal)
-    if not country_code:
+    if not country_code and not cleaned_number.startswith('08'):
         return f"Nomor <code>{safe_html(phone_number)}</code> tidak memiliki format kode negara yang dikenal."
     
     return output
@@ -681,7 +708,7 @@ def main():
     app.add_handler(CallbackQueryHandler(show_game_menu, pattern='^main_game$'))
     app.add_handler(CallbackQueryHandler(play_game, pattern=r'^game_play_(rock|scissors|paper)$'))
     
-    print("🤖 Bot Pulsa Net (v9.15 - Penambahan ID Chat & Informasi User) sedang berjalan...")
+    print("🤖 Bot Pulsa Net (v9.17 - Deteksi Provider Internasional) sedang berjalan...")
     app.run_polling()
 
 if __name__ == "__main__":
