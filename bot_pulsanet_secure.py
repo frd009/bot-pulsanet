@@ -2,7 +2,7 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet_secure.py
 # Developer: frd009
-# Versi: 9.12 (Pembersihan Manual)
+# Versi: 9.14 (Penambahan Cek Negara)
 #
 # CATATAN: Pastikan Anda menginstal semua library yang dibutuhkan
 # dengan menjalankan: pip install -r requirements.txt
@@ -134,6 +134,24 @@ PROVIDER_PREFIXES = {
     "By.U": ["0851"],
 }
 
+# Daftar kode negara yang disederhanakan (beberapa kode yang umum)
+COUNTRY_CODES = {
+    '62': '🇮🇩 Indonesia',
+    '60': '🇲🇾 Malaysia',
+    '65': '🇸🇬 Singapura',
+    '66': '🇹🇭 Thailand',
+    '84': '🇻🇳 Vietnam',
+    '63': '🇵🇭 Filipina',
+    '91': '🇮🇳 India',
+    '1': '🇺🇸/🇨🇦 Amerika Serikat/Kanada',
+    '44': '🇬🇧 Britania Raya',
+    '49': '🇩🇪 Jerman',
+    '86': '🇨🇳 China',
+    '81': '🇯🇵 Jepang',
+    # Tambahkan kode negara lain jika diperlukan
+}
+
+
 def get_products(category=None, product_type=None, special_type=None):
     filtered_items = ALL_PACKAGES_DATA.items()
     if category:
@@ -230,7 +248,7 @@ PAKET_DESCRIPTIONS["bantuan"] = ("<b>Pusat Bantuan & Informasi</b> 🆘\n\n"
                                  "📞 <b>Admin:</b> @hexynos\n" "🌐 <b>Website Resmi:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
 
 # ==============================================================================
-# 🤖 FUNGSI HANDLER BOT (VERSI 9.12)
+# 🤖 FUNGSI HANDLER BOT (VERSI 9.14 - PENAMBAHAN CEK NEGARA)
 # ==============================================================================
 
 async def track_message(context: ContextTypes.DEFAULT_TYPE, message):
@@ -241,64 +259,72 @@ async def track_message(context: ContextTypes.DEFAULT_TYPE, message):
         context.user_data['messages_to_clear'].append(message.message_id)
 
 async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Fungsi yang dipanggil dari tombol untuk membersihkan riwayat chat."""
+    """
+    Fungsi untuk membersihkan riwayat chat.
+    Dioptimalkan agar tidak terlalu berat dan mencegah error keluar dari roomchat.
+    """
     chat_id = update.effective_chat.id
 
-    # Jawab query dan hapus pesan tombol (menu)
+    # 1. Jawab query dan hapus pesan tombol (menu) sebelum memulai proses
     if update.callback_query:
-        await update.callback_query.answer("Memulai pembersihan riwayat chat...")
+        await update.callback_query.answer("Memulai pembersihan riwayat chat. Mohon tunggu...")
         try:
             # Hapus pesan yang memiliki tombol (menu)
             await context.bot.delete_message(chat_id=chat_id, message_id=update.callback_query.message.message_id)
         except Exception:
-            pass # Lanjut saja jika pesan gagal dihapus
+            pass # Lanjut jika pesan gagal dihapus (misal: sudah terhapus)
 
-    # --- Animasi Pembersihan Cepat (v9.12) ---
-    loading_text = "Memproses pembersihan riwayat..."
-    spinner_frames = ["⢿", "⣻", "⣽", "⣾", "⣷", "⣯", "⣟", "⡿"]
-
-    # Kirim pesan loading awal
-    loading_msg = await context.bot.send_message(chat_id=chat_id, text=f"⏳ {spinner_frames[0]} {safe_html(loading_text)}")
+    # 2. Kirim pesan loading singkat
+    loading_msg = await context.bot.send_message(chat_id=chat_id, text="⏳ Memproses pembersihan riwayat...")
 
     messages_to_clear = context.user_data.get('messages_to_clear', [])
+    messages_to_clear = list(set(messages_to_clear)) # Hapus duplikat
 
-    # Animate and delete
-    total_steps = 8
-    for i in range(1, total_steps):
-        try:
-            spinner = spinner_frames[i % len(spinner_frames)]
-            await loading_msg.edit_text(text=f"⏳ {spinner} {safe_html(loading_text)}")
-            await asyncio.sleep(0.08)
-        except Exception:
-            break
-
-    # Perform the actual deletion
+    # 3. Lakukan penghapusan pesan secara efisien
     success_count = 0
-    for msg_id in set(messages_to_clear):
-        try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
-            success_count += 1
-        except Exception:
-            pass
+    
+    # Kumpulkan task penghapusan
+    delete_tasks = []
+    for msg_id in messages_to_clear:
+        # Menghindari penghapusan pesan yang sama dengan pesan loading
+        if msg_id != loading_msg.message_id:
+            delete_tasks.append(context.bot.delete_message(chat_id=chat_id, message_id=msg_id))
 
-    # Clear the loading message as well
+    # Jalankan semua task penghapusan secara bersamaan
+    results = await asyncio.gather(*delete_tasks, return_exceptions=True)
+    
+    for result in results:
+        # Hitung pesan yang berhasil dihapus
+        if not isinstance(result, Exception):
+            success_count += 1
+        
+    # 4. Hapus pesan loading
     try:
         await context.bot.delete_message(chat_id=chat_id, message_id=loading_msg.message_id)
     except Exception:
         pass
 
+    # 5. Clear riwayat dan kirim konfirmasi
     context.user_data['messages_to_clear'] = []
 
-    # Send confirmation and return to main menu
     confirmation_text = f"✅ <b>{success_count}</b> pesan (bot dan perintah Anda) berhasil dibersihkan dari sesi ini."
     keyboard = [[InlineKeyboardButton("🏠 Kembali ke Menu Utama", callback_data="back_to_start")]]
 
-    # Send the confirmation message
-    sent_msg = await context.bot.send_message(chat_id=chat_id, text=confirmation_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-    await track_message(context, sent_msg)
+    # Kirim pesan konfirmasi dan TRACK PESAN INI (penting untuk mencegah error di sesi berikutnya)
+    sent_msg = await context.bot.send_message(
+        chat_id=chat_id, 
+        text=confirmation_text, 
+        reply_markup=InlineKeyboardMarkup(keyboard), 
+        parse_mode="HTML"
+    )
+    # Penting: Pesan konfirmasi ini harus di-track agar bisa dihapus saat clear_history selanjutnya
+    await track_message(context, sent_msg) 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Fungsi utama yang menangani /start (tanpa pembersihan otomatis)."""
+    """
+    Fungsi utama yang menangani /start.
+    Teks sambutan diperbarui agar lebih profesional dan menarik.
+    """
     chat_id = update.effective_chat.id
 
     # Hapus state jika ada, agar pesan teks tidak salah diproses
@@ -312,34 +338,38 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     jakarta_tz = ZoneInfo("Asia/Jakarta")
     now = datetime.now(jakarta_tz)
     hour = now.hour
-    if 5 <= hour < 12: greeting = "Selamat Pagi ☀️"
-    elif 12 <= hour < 15: greeting = "Selamat Siang 🌤️"
-    elif 15 <= hour < 19: greeting = "Selamat Sore 🌥️"
+    
+    # Greeting yang lebih formal dan profesional
+    if 5 <= hour < 11: greeting = "Selamat Pagi ☀️"
+    elif 11 <= hour < 15: greeting = "Selamat Siang 🌤️"
+    elif 15 <= hour < 18: greeting = "Selamat Sore 🌥️"
     else: greeting = "Selamat Malam 🌙"
 
-    user_info = f"👤: {user.first_name}"
-    if user.username:
-        user_info += f" (@{user.username})"
-    user_info += f"\n🆔: <code>{user.id}</code>"
-
+    # Peningkatan kata-kata sambutan
+    user_info = f"<b>{greeting}, {user.first_name}!</b>"
+    
+    main_text = (
+        f"{user_info}\n\n"
+        "Selamat datang di <b>Pulsa Net Bot Resmi</b> 🚀.\n"
+        "Kami hadir sebagai solusi terdepan untuk pengisian <b>Pulsa, Paket Data, dan Voucher Game</b> dengan harga kompetitif dan proses instan.\n\n"
+        "Pilih layanan Anda di bawah ini atau jelajahi fitur utilitas kami untuk kemudahan transaksi Anda."
+    )
+    
+    # Tombol Aksi Utama
     keyboard = [
-        [InlineKeyboardButton("📶 Paket Data", callback_data="main_paket"), InlineKeyboardButton("💰 Pulsa", callback_data="main_pulsa")],
-        [InlineKeyboardButton("🔍 Cek Provider", callback_data="ask_for_number"), InlineKeyboardButton("🖼️ Generator QR", callback_data="ask_for_qr")],
+        [InlineKeyboardButton("📶 Paket Data", callback_data="main_paket"), InlineKeyboardButton("💰 Pulsa Reguler", callback_data="main_pulsa")],
+        [InlineKeyboardButton("🔍 Cek Provider/Negara", callback_data="ask_for_number"), InlineKeyboardButton("🖼️ Generator QR", callback_data="ask_for_qr")], # Perubahan teks tombol
         [InlineKeyboardButton("🎮 Game Sederhana", callback_data="main_game"), InlineKeyboardButton("🆘 Bantuan", callback_data="main_bantuan")],
-        [InlineKeyboardButton("🗑️ Hapus Riwayat Chat", callback_data="clear_history")], # TOMBOL BARU UNTUK HAPUS RIWAYAT
-        [InlineKeyboardButton("📊 Cek Kuota (via Bot)", url="https://t.me/dompetpulsabot")],
+        [InlineKeyboardButton("🗑️ Bersihkan Riwayat Chat", callback_data="clear_history")], 
+        [InlineKeyboardButton("📊 Cek Kuota (via Bot Lain)", url="https://t.me/dompetpulsabot")],
         [InlineKeyboardButton("🌐 Kunjungi Website Kami", url="https://pulsanet.kesug.com/beli.html")]
     ]
-    
-    text = (f"{greeting}!\n{user_info}\n\n"
-            "Selamat datang di <b>Pulsa Net Bot</b> 🤖, solusi terpercaya untuk kebutuhan pulsa dan paket data Anda.\n\n"
-            "Gunakan tombol di bawah untuk membeli produk atau menggunakan fitur lainnya.")
 
     if update.callback_query:
-        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+        await update.callback_query.edit_message_text(main_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
         await update.callback_query.answer()
     else:
-        sent_message = await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+        sent_message = await context.bot.send_message(chat_id=chat_id, text=main_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
         await track_message(context, sent_message)
 
 async def show_operator_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -430,7 +460,7 @@ async def prompt_for_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     action = query.data
     if action == "ask_for_number":
         context.user_data['state'] = 'awaiting_number'
-        text = "<b>🔍 Cek Provider Nomor</b>\n\nSilakan kirimkan satu atau beberapa nomor HP yang ingin Anda periksa."
+        text = "<b>🔍 Cek Provider/Negara Nomor</b>\n\nSilakan kirimkan satu atau beberapa nomor HP yang ingin Anda periksa. Gunakan format internasional (misal: <code>+62812xxxx</code> atau <code>62812xxxx</code>) untuk deteksi negara selain Indonesia."
     elif action == "ask_for_qr":
         context.user_data['state'] = 'awaiting_qr_text'
         text = ("<b>🖼️ Generator QR Code</b>\n\n"
@@ -443,20 +473,60 @@ async def prompt_for_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def get_provider_info(phone_number: str) -> str:
     cleaned_number = re.sub(r'\D', '', phone_number)
-    if cleaned_number.startswith('62'):
-        cleaned_number = '0' + cleaned_number[2:]
-    if not (cleaned_number.startswith('08') and 10 <= len(cleaned_number) <= 13):
-        return f"Nomor <code>{safe_html(phone_number)}</code> sepertinya bukan format valid."
-    prefix = cleaned_number[:4]
-    provider_found = "Tidak diketahui"
-    for provider, prefixes in PROVIDER_PREFIXES.items():
-        if prefix in prefixes:
-            provider_found = provider
-            break
-    if provider_found == "Telkomsel" and prefix in PROVIDER_PREFIXES["By.U"]:
-        provider_found = "Telkomsel / By.U"
-    return (f"Nomor: <code>{safe_html(cleaned_number)}</code>\n"
-            f"Provider: <b>{provider_found}</b>")
+    
+    # 1. Deteksi Kode Negara
+    country_name = "Tidak Diketahui ❓"
+    country_code = None
+    
+    # Mencoba mencocokkan kode negara (1 sampai 4 digit)
+    match = re.match(r'^(\d{1,4})(.*)', cleaned_number)
+    if match:
+        potential_code = match.group(1)
+        # Cari kode terpanjang yang cocok
+        for code in sorted(COUNTRY_CODES.keys(), key=len, reverse=True):
+            if cleaned_number.startswith(code):
+                country_code = code
+                country_name = COUNTRY_CODES[code]
+                break
+    
+    # 2. Deteksi Provider (Khusus Indonesia 62)
+    provider_found = "N/A"
+    
+    # Jika Indonesia
+    if country_code == '62' or cleaned_number.startswith('08'):
+        # Normalisasi nomor ke format 08xx... untuk deteksi provider
+        if cleaned_number.startswith('62'):
+            normalized_number = '0' + cleaned_number[2:]
+        elif cleaned_number.startswith('+62'):
+            normalized_number = '0' + cleaned_number[3:]
+        elif cleaned_number.startswith('08'):
+            normalized_number = cleaned_number
+        else:
+            normalized_number = ''
+            
+        if normalized_number and 10 <= len(normalized_number) <= 13:
+            prefix = normalized_number[:4]
+            provider_found = "Tidak diketahui"
+            for provider, prefixes in PROVIDER_PREFIXES.items():
+                if prefix in prefixes:
+                    provider_found = provider
+                    break
+            if provider_found == "Telkomsel" and prefix in PROVIDER_PREFIXES["By.U"]:
+                provider_found = "Telkomsel / By.U"
+    
+    # 3. Format Output
+    output = f"Nomor: <code>{safe_html(cleaned_number)}</code>\n"
+    output += f"Negara: <b>{country_name}</b>"
+    
+    # Tampilkan Provider hanya jika negara Indonesia
+    if country_code == '62':
+        output += f"\nProvider: <b>{provider_found}</b>"
+    
+    # Kasus nomor tidak valid (terlalu pendek atau prefix tidak dikenal)
+    if not country_code:
+        return f"Nomor <code>{safe_html(phone_number)}</code> tidak memiliki format kode negara yang dikenal."
+    
+    return output
 
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await track_message(context, update.message)
@@ -464,13 +534,15 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     message_text = update.message.text
     
     if state == 'awaiting_number':
-        phone_numbers = re.findall(r'(?:\+62|62|0)8[1-9][0-9]{7,11}\b', message_text)
+        # Pola regex yang lebih longgar untuk mencocokkan nomor telepon dengan atau tanpa kode negara/awalan 0
+        phone_numbers = re.findall(r'(?:\+\d{1,4}|0|62)\d{8,15}\b', message_text)
+        
         if phone_numbers:
             responses = [get_provider_info(num) for num in phone_numbers]
             sent_msg = await update.message.reply_text("✅ <b>Hasil Pengecekan:</b>\n\n" + "\n\n".join(responses), parse_mode="HTML")
             await track_message(context, sent_msg)
         else:
-            sent_msg = await update.message.reply_text("Maaf, saya tidak menemukan format nomor HP yang valid di pesan Anda.")
+            sent_msg = await update.message.reply_text("Maaf, saya tidak menemukan format nomor telepon yang valid di pesan Anda. Pastikan Anda menyertakan kode negara (misal: +62) untuk hasil terbaik.")
             await track_message(context, sent_msg)
         
         # Clear state and show next options
@@ -522,11 +594,13 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         
     else:
         # Auto-detect phone number if no state is active
-        phone_numbers = re.findall(r'(?:\+62|62|0)8[1-9][0-9]{7,11}\b', message_text)
+        # Gunakan regex yang sama dengan mode "awaiting_number" untuk konsistensi
+        phone_numbers = re.findall(r'(?:\+\d{1,4}|0|62)\d{8,15}\b', message_text)
+        
         if phone_numbers:
             responses = [get_provider_info(num) for num in phone_numbers]
-            sent_msg = await update.message.reply_text("💡 <b>Provider Terdeteksi:</b>\n\n" + "\n\n".join(responses) +
-                                                      "\n\n_Ini adalah fitur deteksi otomatis. Gunakan tombol 'Cek Provider' di menu /start untuk hasil yang lebih pasti._",
+            sent_msg = await update.message.reply_text("💡 <b>Provider/Negara Terdeteksi:</b>\n\n" + "\n\n".join(responses) +
+                                                      "\n\n_Ini adalah fitur deteksi otomatis. Gunakan tombol 'Cek Provider/Negara' di menu /start untuk hasil yang lebih pasti._",
                                                        parse_mode="HTML")
             await track_message(context, sent_msg)
         else:
@@ -596,7 +670,7 @@ def main():
     app.add_handler(CallbackQueryHandler(show_game_menu, pattern='^main_game$'))
     app.add_handler(CallbackQueryHandler(play_game, pattern=r'^game_play_(rock|scissors|paper)$'))
     
-    print("🤖 Bot Pulsa Net (v9.12 - Pembersihan Manual) sedang berjalan...")
+    print("🤖 Bot Pulsa Net (v9.14 - Penambahan Cek Negara) sedang berjalan...")
     app.run_polling()
 
 if __name__ == "__main__":
