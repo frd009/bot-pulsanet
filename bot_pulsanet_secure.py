@@ -2,7 +2,7 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet_secure.py
 # Developer: frd009
-# Versi: 9.12 (Rapid Cleanup Animation)
+# Versi: 9.12 (Pembersihan Manual)
 #
 # CATATAN: Pastikan Anda menginstal semua library yang dibutuhkan
 # dengan menjalankan: pip install -r requirements.txt
@@ -94,9 +94,11 @@ ALL_PACKAGES_RAW = [
 # ==============================================================================
 
 def safe_html(text):
+    """Mengubah teks menjadi aman untuk digunakan di Telegram HTML parsing."""
     return html.escape(str(text))
 
 def create_package_key(pkg):
+    """Membuat kunci unik untuk paket."""
     name_slug = re.sub(r'[^a-z0-9_]', '', pkg['name'].lower().replace(' ', '_'))
     return f"pkg_{pkg['id']}_{name_slug}"
 
@@ -167,12 +169,12 @@ def create_general_description(package_key):
     header = create_header(info)
     if info.get('type') == 'Pulsa':
         return (header + f"\n• 💰 <b>Nominal Pulsa:</b> {info.get('data', 'N/A')}\n"
-                f"• ⏳ <b>Penambahan Masa Aktif:</b> {info.get('validity', 'N/A')}\n"
-                f"• 📱 <b>Provider:</b> {info.get('category', 'N/A')}")
+                        f"• ⏳ <b>Penambahan Masa Aktif:</b> {info.get('validity', 'N/A')}\n"
+                        f"• 📱 <b>Provider:</b> {info.get('category', 'N/A')}")
     else:
         return (header + f"\n• 💾 <b>Kuota Utama:</b> {info.get('data', 'N/A')}\n"
-                f"• 📅 <b>Masa Aktif:</b> {info.get('validity', 'N/A')}\n"
-                f"• 📝 <b>Rincian:</b> {safe_html(info.get('details', 'N/A'))}")
+                        f"• 📅 <b>Masa Aktif:</b> {info.get('validity', 'N/A')}\n"
+                        f"• 📝 <b>Rincian:</b> {safe_html(info.get('details', 'N/A'))}")
 
 def create_akrab_description(package_key):
     info = ALL_PACKAGES_DATA.get(package_key, {})
@@ -183,15 +185,15 @@ def create_akrab_description(package_key):
                     "🌐 <b>Kompatibilitas:</b> XL / AXIS / LIVEON\n" "📅 <b>Masa Aktif:</b> ±28 hari (sesuai ketentuan XL)\n\n")
     if quota_info:
         description += ("💾 <b>Estimasi Total Kuota (berdasarkan zona):</b>\n"
-                        f"  - <b>Area 1:</b> {quota_info.get('1', 'N/A')}\n" f"  - <b>Area 2:</b> {quota_info.get('2', 'N/A')}\n"
-                        f"  - <b>Area 3:</b> {quota_info.get('3', 'N/A')}\n" f"  - <b>Area 4:</b> {quota_info.get('4', 'N/A')}\n\n")
+                        f"  - <b>Area 1:</b> {quota_info.get('1', 'N/A')}\n" f"  - <b>Area 2:</b> {quota_info.get('2', 'N/A')}\n"
+                        f"  - <b>Area 3:</b> {quota_info.get('3', 'N/A')}\n" f"  - <b>Area 4:</b> {quota_info.get('4', 'N/A')}\n\n")
     else:
         description += f"💾 <b>Kuota Utama:</b> {info.get('data', 'N/A')}\n\n"
     description += ("📋 <b>Prosedur & Ketentuan Penting:</b>\n"
-                    "  - Pastikan SIM terpasang di perangkat (HP/Modem) untuk deteksi lokasi BTS dan klaim bonus kuota lokal.\n"
-                    "  - Jika kuota MyRewards belum masuk sepenuhnya, mohon tunggu 1x24 jam sebelum melapor ke Admin.\n\n"
-                    "ℹ️ <b>Informasi Tambahan:</b>\n" "  - <a href='http://bit.ly/area_akrab'>Cek Pembagian Area Kuota Anda</a>\n"
-                    "  - <a href='https://kmsp-store.com/cara-unreg-paket-akrab-yang-benar'>Panduan Unreg Paket Akrab</a>")
+                    "  - Pastikan SIM terpasang di perangkat (HP/Modem) untuk deteksi lokasi BTS dan klaim bonus kuota lokal.\n"
+                    "  - Jika kuota MyRewards belum masuk sepenuhnya, mohon tunggu 1x24 jam sebelum melapor ke Admin.\n\n"
+                    "ℹ️ <b>Informasi Tambahan:</b>\n" "  - <a href='http://bit.ly/area_akrab'>Cek Pembagian Area Kuota Anda</a>\n"
+                    "  - <a href='https://kmsp-store.com/cara-unreg-paket-akrab-yang-benar'>Panduan Unreg Paket Akrab</a>")
     return description
 
 def create_circle_description(package_key):
@@ -201,10 +203,10 @@ def create_circle_description(package_key):
             "📱 <b>Kompatibilitas:</b> Khusus XL Prabayar (Prepaid)\n"
             "⏳ <b>Masa Aktif:</b> 28 hari atau hingga kuota habis. Jika kuota habis sebelum 28 hari, status keanggotaan menjadi <b>BEKU/FREEZE</b>.\n"
             "⚡ <b>Aktivasi:</b> Instan, tanpa OTP.\n\n" "⚠️ <b>PERHATIAN (WAJIB BACA):</b>\n" "<b>1. Cara Cek Kuota:</b>\n"
-            "   - Buka aplikasi <b>MyXL terbaru</b>.\n" "   - Klik menu <b>XL CIRCLE</b> di bagian bawah (bukan dari 'Lihat Paket Saya').\n\n"
-            "<b>2. Syarat & Ketentuan:</b>\n" "   - <b>Umur Kartu:</b> Minimal 60 hari. Cek di <a href='https://sidompul.kmsp-store.com/'>sini</a>.\n"
-            "   - <b>Keanggotaan:</b> Tidak terdaftar di Circle lain pada bulan yang sama.\n" "   - <b>Status Kartu:</b> Tidak dalam masa tenggang.\n"
-            "   - <b>DILARANG UNREG:</b> Keluar dari Circle akan menghanguskan garansi (tanpa refund).")
+            "   - Buka aplikasi <b>MyXL terbaru</b>.\n" "   - Klik menu <b>XL CIRCLE</b> di bagian bawah (bukan dari 'Lihat Paket Saya').\n\n"
+            "<b>2. Syarat & Ketentuan:</b>\n" "   - <b>Umur Kartu:</b> Minimal 60 hari. Cek di <a href='https://sidompul.kmsp-store.com/'>sini</a>.\n"
+            "   - <b>Keanggotaan:</b> Tidak terdaftar di Circle lain pada bulan yang sama.\n" "   - <b>Status Kartu:</b> Tidak dalam masa tenggang.\n"
+            "   - <b>DILARANG UNREG:</b> Keluar dari Circle akan menghanguskan garansi (tanpa refund).")
 
 def create_bebaspuas_description(package_key):
     info = ALL_PACKAGES_DATA.get(package_key, {})
@@ -213,71 +215,98 @@ def create_bebaspuas_description(package_key):
             "📱 <b>Kompatibilitas:</b> Khusus XL Prabayar (Prepaid)\n" "🌍 <b>Area:</b> Berlaku di seluruh Indonesia\n"
             "📅 <b>Masa Aktif & Garansi:</b> 30 Hari\n" f"💾 <b>Kuota Utama:</b> {info.get('data', 'N/A')} (Full 24 Jam)\n\n"
             "⭐ <b>Fitur Unggulan:</b>\n"
-            "  - <b>Akumulasi Kuota:</b> Sisa kuota dan masa aktif akan ditambahkan jika Anda membeli paket Bebas Puas lain sebelum masa aktif berakhir.\n"
-            "  - <b>Tanpa Syarat Pulsa:</b> Aktivasi tidak memerlukan pulsa minimum.\n\n" "🎁 <b>Klaim Bonus:</b>\n"
-            "  - Tersedia bonus kuota yang dapat diklaim di aplikasi myXL (pilih salah satu: YouTube, TikTok, atau Kuota Utama).")
+            "  - <b>Akumulasi Kuota:</b> Sisa kuota dan masa aktif akan ditambahkan jika Anda membeli paket Bebas Puas lain sebelum masa aktif berakhir.\n"
+            "  - <b>Tanpa Syarat Pulsa:</b> Aktivasi tidak memerlukan pulsa minimum.\n\n" "🎁 <b>Klaim Bonus:</b>\n"
+            "  - Tersedia bonus kuota yang dapat diklaim di aplikasi myXL (pilih salah satu: YouTube, TikTok, atau Kuota Utama).")
 
 PAKET_DESCRIPTIONS = {key: create_general_description(key) for key in ALL_PACKAGES_DATA}
 for key in get_products(special_type='Akrab'): PAKET_DESCRIPTIONS[key] = create_akrab_description(key)
 for key in get_products(special_type='Circle'): PAKET_DESCRIPTIONS[key] = create_circle_description(key)
 for key in get_products(special_type='BebasPuas'): PAKET_DESCRIPTIONS[key] = create_bebaspuas_description(key)
-PAKET_DESCRIPTIONS["bantuan"] = ("<b>Pusat Bantuan & Informasi</b> ❔\n\n"
-                                     "Selamat datang di pusat bantuan Pulsa Net Bot.\n\n"
-                                     "Jika Anda mengalami kendala teknis, memiliki pertanyaan seputar produk, atau tertarik untuk menjadi reseller, jangan ragu untuk menghubungi Admin kami.\n\n"
-                                     "Gunakan perintah /start untuk kembali ke menu utama kapan saja.\n\n"
-                                     "📞 <b>Admin:</b> @hexynos\n" "🌐 <b>Website Resmi:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
+PAKET_DESCRIPTIONS["bantuan"] = ("<b>Pusat Bantuan & Informasi</b> 🆘\n\n"
+                                 "Selamat datang di pusat bantuan Pulsa Net Bot.\n\n"
+                                 "Jika Anda mengalami kendala teknis, memiliki pertanyaan seputar produk, atau tertarik untuk menjadi reseller, jangan ragu untuk menghubungi Admin kami.\n\n"
+                                 "Gunakan perintah /start untuk kembali ke menu utama kapan saja.\n\n"
+                                 "📞 <b>Admin:</b> @hexynos\n" "🌐 <b>Website Resmi:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
 
 # ==============================================================================
 # 🤖 FUNGSI HANDLER BOT (VERSI 9.12)
 # ==============================================================================
 
 async def track_message(context: ContextTypes.DEFAULT_TYPE, message):
-    """Mencatat ID pesan yang dikirim oleh bot untuk dibersihkan nanti."""
+    """Mencatat ID pesan yang dikirim oleh bot dan user untuk dibersihkan nanti."""
     if message:
         if 'messages_to_clear' not in context.user_data:
             context.user_data['messages_to_clear'] = []
         context.user_data['messages_to_clear'].append(message.message_id)
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Fungsi utama yang menangani /start dengan logika pembersihan cerdas."""
+async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Fungsi yang dipanggil dari tombol untuk membersihkan riwayat chat."""
     chat_id = update.effective_chat.id
 
-    if context.user_data.get('is_first_start') is False:
-        if update.message:
-            
-            # --- Animasi Pembersihan Cepat (v9.12) ---
-            loading_text = "Membersihkan sesi..."
-            spinner_frames = ["⢿", "⣻", "⣽", "⣾", "⣷", "⣯", "⣟", "⡿"]
+    # Jawab query dan hapus pesan tombol (menu)
+    if update.callback_query:
+        await update.callback_query.answer("Memulai pembersihan riwayat chat...")
+        try:
+            # Hapus pesan yang memiliki tombol (menu)
+            await context.bot.delete_message(chat_id=chat_id, message_id=update.callback_query.message.message_id)
+        except Exception:
+            pass # Lanjut saja jika pesan gagal dihapus
 
-            # Kirim pesan loading awal
-            loading_msg = await context.bot.send_message(chat_id=chat_id, text=f"⏳ {spinner_frames[0]} {safe_html(loading_text)}")
+    # --- Animasi Pembersihan Cepat (v9.12) ---
+    loading_text = "Memproses pembersihan riwayat..."
+    spinner_frames = ["⢿", "⣻", "⣽", "⣾", "⣷", "⣯", "⣟", "⡿"]
 
-            # Total durasi animasi: 8 langkah * 0.08 detik = ~0.64 detik
-            # Ini adalah durasi yang ideal, terasa cepat namun tetap terlihat.
-            total_steps = 8
-            for i in range(1, total_steps): # Mulai dari 1 karena frame 0 sudah dikirim
-                try:
-                    spinner = spinner_frames[i % len(spinner_frames)]
-                    await loading_msg.edit_text(text=f"⏳ {spinner} {safe_html(loading_text)}")
-                    await asyncio.sleep(0.08) # Durasi jeda antar frame
-                except Exception:
-                    # Hentikan animasi jika ada error (misal: pesan sudah dihapus manual)
-                    break
-            # --- Akhir Animasi Cepat ---
+    # Kirim pesan loading awal
+    loading_msg = await context.bot.send_message(chat_id=chat_id, text=f"⏳ {spinner_frames[0]} {safe_html(loading_text)}")
 
-            messages_to_clear = context.user_data.get('messages_to_clear', [])
-            messages_to_clear.append(update.message.message_id)
-            messages_to_clear.append(loading_msg.message_id)
+    messages_to_clear = context.user_data.get('messages_to_clear', [])
 
-            for msg_id in set(messages_to_clear):
-                try:
-                    await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
-                except Exception:
-                    pass
+    # Animate and delete
+    total_steps = 8
+    for i in range(1, total_steps):
+        try:
+            spinner = spinner_frames[i % len(spinner_frames)]
+            await loading_msg.edit_text(text=f"⏳ {spinner} {safe_html(loading_text)}")
+            await asyncio.sleep(0.08)
+        except Exception:
+            break
 
-            context.user_data['messages_to_clear'] = []
+    # Perform the actual deletion
+    success_count = 0
+    for msg_id in set(messages_to_clear):
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
+            success_count += 1
+        except Exception:
+            pass
 
-    context.user_data['is_first_start'] = False
+    # Clear the loading message as well
+    try:
+        await context.bot.delete_message(chat_id=chat_id, message_id=loading_msg.message_id)
+    except Exception:
+        pass
+
+    context.user_data['messages_to_clear'] = []
+
+    # Send confirmation and return to main menu
+    confirmation_text = f"✅ <b>{success_count}</b> pesan (bot dan perintah Anda) berhasil dibersihkan dari sesi ini."
+    keyboard = [[InlineKeyboardButton("🏠 Kembali ke Menu Utama", callback_data="back_to_start")]]
+
+    # Send the confirmation message
+    sent_msg = await context.bot.send_message(chat_id=chat_id, text=confirmation_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    await track_message(context, sent_msg)
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Fungsi utama yang menangani /start (tanpa pembersihan otomatis)."""
+    chat_id = update.effective_chat.id
+
+    # Hapus state jika ada, agar pesan teks tidak salah diproses
+    context.user_data.pop('state', None)
+
+    # Track command message for future manual cleanup
+    if update.message and update.message.text == '/start':
+        await track_message(context, update.message)
 
     user = update.effective_user
     jakarta_tz = ZoneInfo("Asia/Jakarta")
@@ -297,6 +326,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📶 Paket Data", callback_data="main_paket"), InlineKeyboardButton("💰 Pulsa", callback_data="main_pulsa")],
         [InlineKeyboardButton("🔍 Cek Provider", callback_data="ask_for_number"), InlineKeyboardButton("🖼️ Generator QR", callback_data="ask_for_qr")],
         [InlineKeyboardButton("🎮 Game Sederhana", callback_data="main_game"), InlineKeyboardButton("🆘 Bantuan", callback_data="main_bantuan")],
+        [InlineKeyboardButton("🗑️ Hapus Riwayat Chat", callback_data="clear_history")], # TOMBOL BARU UNTUK HAPUS RIWAYAT
         [InlineKeyboardButton("📊 Cek Kuota (via Bot)", url="https://t.me/dompetpulsabot")],
         [InlineKeyboardButton("🌐 Kunjungi Website Kami", url="https://pulsanet.kesug.com/beli.html")]
     ]
@@ -324,22 +354,25 @@ async def show_operator_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
         row = [InlineKeyboardButton(f"{icon} {op}", callback_data=f"list_{product_type_key}_{op.lower()}") for op, icon in op_items[i:i+2]]
         keyboard.append(row)
     keyboard.append([InlineKeyboardButton("⬅️ Kembali ke Menu Utama", callback_data="back_to_start")])
-    await query.edit_message_text(f"Anda memilih kategori <b>{product_type_name}</b>.\nSilakan pilih provider yang Anda gunakan:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    sent_msg = await query.edit_message_text(f"Anda memilih kategori <b>{product_type_name}</b>.\nSilakan pilih provider yang Anda gunakan:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    await track_message(context, sent_msg)
+
 
 async def show_xl_paket_submenu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer()
     keyboard = [
         [InlineKeyboardButton("🤝 Akrab", callback_data="list_paket_xl_akrab"), InlineKeyboardButton("🥳 Bebas Puas", callback_data="list_paket_xl_bebaspuas")],
-        [InlineKeyboardButton("🌀 Circle", callback_data="list_paket_xl_circle"), InlineKeyboardButton("🚀 Paket Lainnya", callback_data="list_paket_xl_paket")],
+        [InlineKeyboardButton("⭕️ Circle", callback_data="list_paket_xl_circle"), InlineKeyboardButton("🚀 Paket Lainnya", callback_data="list_paket_xl_paket")],
         [InlineKeyboardButton("⬅️ Kembali ke Provider", callback_data="main_paket")]
     ]
-    await update.callback_query.edit_message_text("<b>Pilihan Paket Data XL 💙</b>\n\nKami menyediakan beberapa jenis paket XL yang dapat disesuaikan dengan kebutuhan Anda. Silakan pilih jenis paket di bawah ini:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    sent_msg = await update.callback_query.edit_message_text("<b>Pilihan Paket Data XL 🌐</b>\n\nKami menyediakan beberapa jenis paket XL yang dapat disesuaikan dengan kebutuhan Anda. Silakan pilih jenis paket di bawah ini:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    await track_message(context, sent_msg)
 
 async def show_product_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query, data_parts = update.callback_query, update.callback_query.data.split('_')
     await query.answer()
     product_type_key, category_key, special_type_key = data_parts[1], data_parts[2], data_parts[3] if len(data_parts) > 3 else None
-    titles = {"tri": "Tri 🧡", "axis": "Axis 💜", "telkomsel": "Telkomsel ❤️", "indosat": "Indosat 💛", "by.u": "By.U 🖤", "xl": "XL 💙"}
+    titles = {"tri": "Tri 🌐", "axis": "Axis 🌐", "telkomsel": "Telkomsel 🌐", "indosat": "Indosat 🌐", "by.u": "By.U 🌐", "xl": "XL 🌐"}
     base_title = titles.get(category_key, '')
     if special_type_key:
         products = get_products(category=category_key, special_type=special_type_key)
@@ -351,7 +384,8 @@ async def show_product_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
         title = f"<b>{base_title} - {product_name}</b>"
     if not products:
         back_cb = "list_paket_xl" if category_key == 'xl' and product_type_key == 'paket' else f"main_{product_type_key}"
-        await query.edit_message_text("Mohon maaf, produk untuk kategori ini belum tersedia.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data=back_cb)]]))
+        sent_msg = await query.edit_message_text("Mohon maaf, produk untuk kategori ini belum tersedia.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data=back_cb)]]))
+        await track_message(context, sent_msg)
         return
     sorted_keys = sorted(products.keys(), key=lambda k: PRICES.get(k, 0))
     keyboard = []
@@ -361,7 +395,8 @@ async def show_product_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard.append([InlineKeyboardButton(button_text, callback_data=key)])
     back_cb = "list_paket_xl" if category_key == 'xl' and product_type_key == 'paket' else f"main_{product_type_key}"
     keyboard.append([InlineKeyboardButton("⬅️ Kembali", callback_data=back_cb)])
-    await query.edit_message_text(f"{title}\n\nSilakan pilih produk yang Anda inginkan:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    sent_msg = await query.edit_message_text(f"{title}\n\nSilakan pilih produk yang Anda inginkan:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    await track_message(context, sent_msg)
 
 async def show_package_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query, package_key = update.callback_query, update.callback_query.data
@@ -376,15 +411,17 @@ async def show_package_details(update: Update, context: ContextTypes.DEFAULT_TYP
     keyboard = [[InlineKeyboardButton("🛒 Beli Sekarang (Website)", url="https://pulsanet.kesug.com/beli.html")],
                 [InlineKeyboardButton("⬅️ Kembali ke Daftar", callback_data=back_data)],
                 [InlineKeyboardButton("🏠 Menu Utama", callback_data="back_to_start")]]
-    await query.edit_message_text(PAKET_DESCRIPTIONS.get(package_key, "Informasi produk tidak ditemukan."), reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML", disable_web_page_preview=True)
+    sent_msg = await query.edit_message_text(PAKET_DESCRIPTIONS.get(package_key, "Informasi produk tidak ditemukan."), reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML", disable_web_page_preview=True)
+    await track_message(context, sent_msg)
 
 async def show_bantuan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text(PAKET_DESCRIPTIONS["bantuan"], reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali ke Menu Utama", callback_data="back_to_start")]]), parse_mode="HTML", disable_web_page_preview=True)
+    sent_msg = await query.edit_message_text(PAKET_DESCRIPTIONS["bantuan"], reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali ke Menu Utama", callback_data="back_to_start")]]), parse_mode="HTML", disable_web_page_preview=True)
+    await track_message(context, sent_msg)
 
 # ==============================================================================
-#  FUNGSI UNTUK FITUR BARU (CEK NOMOR, QR, GAME)
+# FUNGSI UNTUK FITUR BARU (CEK NOMOR, QR, GAME)
 # ==============================================================================
 
 async def prompt_for_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -401,7 +438,8 @@ async def prompt_for_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         return
     keyboard = [[InlineKeyboardButton("⬅️ Batal & Kembali ke Menu", callback_data="back_to_start")]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    sent_msg = await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    await track_message(context, sent_msg)
 
 def get_provider_info(phone_number: str) -> str:
     cleaned_number = re.sub(r'\D', '', phone_number)
@@ -434,6 +472,8 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         else:
             sent_msg = await update.message.reply_text("Maaf, saya tidak menemukan format nomor HP yang valid di pesan Anda.")
             await track_message(context, sent_msg)
+        
+        # Clear state and show next options
         del context.user_data['state']
         keyboard = [
             [InlineKeyboardButton("🔍 Cek Nomor Lain", callback_data="ask_for_number")],
@@ -470,6 +510,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         except Exception as e:
             await loading_msg.edit_text(f"Terjadi kesalahan saat membuat QR Code: {e}")
 
+        # Clear state and show next options
         del context.user_data['state']
         keyboard = [
             [InlineKeyboardButton("🖼️ Buat QR Lain", callback_data="ask_for_qr")],
@@ -480,12 +521,13 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         await track_message(context, sent_msg_2)
         
     else:
+        # Auto-detect phone number if no state is active
         phone_numbers = re.findall(r'(?:\+62|62|0)8[1-9][0-9]{7,11}\b', message_text)
         if phone_numbers:
             responses = [get_provider_info(num) for num in phone_numbers]
-            sent_msg = await update.message.reply_text("💡 <b>Provider Terdeteksi:</b>\n\n" + "\n\n".join(responses) + 
-                                               "\n\n_Ini adalah fitur deteksi otomatis. Gunakan tombol 'Cek Provider' di menu /start untuk hasil yang lebih pasti._", 
-                                               parse_mode="HTML")
+            sent_msg = await update.message.reply_text("💡 <b>Provider Terdeteksi:</b>\n\n" + "\n\n".join(responses) +
+                                                      "\n\n_Ini adalah fitur deteksi otomatis. Gunakan tombol 'Cek Provider' di menu /start untuk hasil yang lebih pasti._",
+                                                       parse_mode="HTML")
             await track_message(context, sent_msg)
         else:
             sent_msg = await update.message.reply_text("Saya tidak mengerti. Silakan gunakan /start untuk melihat semua perintah yang tersedia.")
@@ -498,8 +540,9 @@ async def show_game_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  InlineKeyboardButton("Gunting ✂️", callback_data="game_play_scissors"),
                  InlineKeyboardButton("Kertas 📄", callback_data="game_play_paper")],
                 [InlineKeyboardButton("⬅️ Kembali ke Menu Utama", callback_data="back_to_start")]]
-    await query.edit_message_text("<b>🎮 Game Batu-Gunting-Kertas</b>\n\nAyo bermain! Pilih jagoanmu:",
-                                  reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    sent_msg = await query.edit_message_text("<b>🎮 Game Batu-Gunting-Kertas</b>\n\nAyo bermain! Pilih jagoanmu:",
+                                     reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    await track_message(context, sent_msg)
 
 async def play_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -516,12 +559,13 @@ async def play_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
          (user_choice == 'paper' and bot_choice == 'rock'):
         result_text = "<b>Kamu Menang!</b> 🎉"
     else:
-        result_text = "<b>Kamu Kalah!</b> 🤖"
+        result_text = "<b>Kamu Kalah!</b> 🦾"
     text = (f"Kamu memilih: {user_choice.capitalize()} {emoji[user_choice]}\n"
             f"Bot memilih: {bot_choice.capitalize()} {emoji[bot_choice]}\n\n{result_text}")
     keyboard = [[InlineKeyboardButton("🔄 Main Lagi", callback_data="main_game")],
                 [InlineKeyboardButton("🏠 Kembali ke Menu Utama", callback_data="back_to_start")]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    sent_msg = await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    await track_message(context, sent_msg)
 
 # ==============================================================================
 # 🚀 FUNGSI UTAMA UNTUK MENJALANKAN BOT
@@ -530,12 +574,18 @@ async def play_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not TOKEN:
+        # Perlu token bot untuk running di luar lingkungan Canvas
+        # Di lingkungan Canvas, token disediakan, tetapi pesan ini untuk keamanan
         raise ValueError("Token bot tidak ditemukan! Silakan atur TELEGRAM_BOT_TOKEN di environment variable Anda.")
     app = Application.builder().token(TOKEN).build()
     
     # Menambahkan handler
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(start, pattern='^back_to_start$'))
+    
+    # HANDLER BARU UNTUK MEMBERSIHKAN RIWAYAT
+    app.add_handler(CallbackQueryHandler(clear_history, pattern='^clear_history$'))
+    
     app.add_handler(CallbackQueryHandler(show_bantuan, pattern='^main_bantuan$'))
     app.add_handler(CallbackQueryHandler(show_operator_menu, pattern=r'^main_(paket|pulsa)$'))
     app.add_handler(CallbackQueryHandler(show_xl_paket_submenu, pattern=r'^list_paket_xl$'))
@@ -546,7 +596,7 @@ def main():
     app.add_handler(CallbackQueryHandler(show_game_menu, pattern='^main_game$'))
     app.add_handler(CallbackQueryHandler(play_game, pattern=r'^game_play_(rock|scissors|paper)$'))
     
-    print("🤖 Bot Pulsa Net (v9.12 - Rapid Cleanup Animation) sedang berjalan...")
+    print("🤖 Bot Pulsa Net (v9.12 - Pembersihan Manual) sedang berjalan...")
     app.run_polling()
 
 if __name__ == "__main__":
