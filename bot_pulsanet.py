@@ -1,8 +1,8 @@
 # ============================================
 # 🤖 Bot Pulsa Net
-# File: bot_pulsanet_secure_v2.py
-# Developer: frd009 (Ditingkatkan oleh Gemini)
-# Versi: 9.21 (Optimalisasi Pembersihan Chat & Pelacakan Pesan)
+# File: bot_pulsanet.py
+# Developer: frd009
+# Versi: 11.0
 #
 # CATATAN: Pastikan Anda menginstal semua library yang dibutuhkan
 # dengan menjalankan: pip install -r requirements.txt
@@ -15,15 +15,25 @@ import warnings
 import random
 import io
 import asyncio
+import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-# --- Tambahan import untuk QR Code ---
+# --- Tambahan import ---
 import qrcode
 from PIL import Image
+import yt_dlp  # Library untuk download video
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.constants import ChatAction
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
+
+# Konfigurasi logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
 # Menghilangkan peringatan 'pkg_resources is deprecated'
 warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
@@ -216,12 +226,12 @@ def create_general_description(package_key):
     header = create_header(info)
     if info.get('type') == 'Pulsa':
         return (header + f"\n• 💰 <b>Nominal Pulsa:</b> {info.get('data', 'N/A')}\n"
-                        f"• ⏳ <b>Penambahan Masa Aktif:</b> {info.get('validity', 'N/A')}\n"
-                        f"• 📱 <b>Provider:</b> {info.get('category', 'N/A')}")
+                         f"• ⏳ <b>Penambahan Masa Aktif:</b> {info.get('validity', 'N/A')}\n"
+                         f"• 📱 <b>Provider:</b> {info.get('category', 'N/A')}")
     else:
         return (header + f"\n• 💾 <b>Kuota Utama:</b> {info.get('data', 'N/A')}\n"
-                        f"• 📅 <b>Masa Aktif:</b> {info.get('validity', 'N/A')}\n"
-                        f"• 📝 <b>Rincian:</b> {safe_html(info.get('details', 'N/A'))}")
+                         f"• 📅 <b>Masa Aktif:</b> {info.get('validity', 'N/A')}\n"
+                         f"• 📝 <b>Rincian:</b> {safe_html(info.get('details', 'N/A'))}")
 
 def create_akrab_description(package_key):
     info = ALL_PACKAGES_DATA.get(package_key, {})
@@ -250,10 +260,10 @@ def create_circle_description(package_key):
             "📱 <b>Kompatibilitas:</b> Khusus XL Prabayar (Prepaid)\n"
             "⏳ <b>Masa Aktif:</b> 28 hari atau hingga kuota habis. Jika kuota habis sebelum 28 hari, status keanggotaan menjadi <b>BEKU/FREEZE</b>.\n"
             "⚡ <b>Aktivasi:</b> Instan, tanpa OTP.\n\n" "⚠️ <b>PERHATIAN (WAJIB BACA):</b>\n" "<b>1. Cara Cek Kuota:</b>\n"
-            "   - Buka aplikasi <b>MyXL terbaru</b>.\n" "   - Klik menu <b>XL CIRCLE</b> di bagian bawah (bukan dari 'Lihat Paket Saya').\n\n"
-            "<b>2. Syarat & Ketentuan:</b>\n" "   - <b>Umur Kartu:</b> Minimal 60 hari. Cek di <a href='https://sidompul.kmsp-store.com/'>sini</a>.\n"
-            "   - <b>Keanggotaan:</b> Tidak terdaftar di Circle lain pada bulan yang sama.\n" "   - <b>Status Kartu:</b> Tidak dalam masa tenggang.\n"
-            "   - <b>DILARANG UNREG:</b> Keluar dari Circle akan menghanguskan garansi (tanpa refund).")
+            "    - Buka aplikasi <b>MyXL terbaru</b>.\n" "    - Klik menu <b>XL CIRCLE</b> di bagian bawah (bukan dari 'Lihat Paket Saya').\n\n"
+            "<b>2. Syarat & Ketentuan:</b>\n" "    - <b>Umur Kartu:</b> Minimal 60 hari. Cek di <a href='https://sidompul.kmsp-store.com/'>sini</a>.\n"
+            "    - <b>Keanggotaan:</b> Tidak terdaftar di Circle lain pada bulan yang sama.\n" "    - <b>Status Kartu:</b> Tidak dalam masa tenggang.\n"
+            "    - <b>DILARANG UNREG:</b> Keluar dari Circle akan menghanguskan garansi (tanpa refund).")
 
 def create_bebaspuas_description(package_key):
     info = ALL_PACKAGES_DATA.get(package_key, {})
@@ -271,13 +281,13 @@ for key in get_products(special_type='Akrab'): PAKET_DESCRIPTIONS[key] = create_
 for key in get_products(special_type='Circle'): PAKET_DESCRIPTIONS[key] = create_circle_description(key)
 for key in get_products(special_type='BebasPuas'): PAKET_DESCRIPTIONS[key] = create_bebaspuas_description(key)
 PAKET_DESCRIPTIONS["bantuan"] = ("<b>Pusat Bantuan & Informasi</b> 🆘\n\n"
-                                 "Selamat datang di pusat bantuan Pulsa Net Bot.\n\n"
-                                 "Jika Anda mengalami kendala teknis, memiliki pertanyaan seputar produk, atau tertarik untuk menjadi reseller, jangan ragu untuk menghubungi Admin kami.\n\n"
-                                 "Gunakan perintah /start untuk kembali ke menu utama kapan saja.\n\n"
-                                 "📞 <b>Admin:</b> @hexynos\n" "🌐 <b>Website Resmi:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
+                                     "Selamat datang di pusat bantuan Pulsa Net Bot.\n\n"
+                                     "Jika Anda mengalami kendala teknis, memiliki pertanyaan seputar produk, atau tertarik untuk menjadi reseller, jangan ragu untuk menghubungi Admin kami.\n\n"
+                                     "Gunakan perintah /start untuk kembali ke menu utama kapan saja.\n\n"
+                                     "📞 <b>Admin:</b> @hexynos\n" "🌐 <b>Website Resmi:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
 
 # ==============================================================================
-# 🤖 FUNGSI HANDLER BOT (VERSI 9.21)
+# 🤖 FUNGSI HANDLER BOT (VERSI 11.0)
 # ==============================================================================
 
 async def track_message(context: ContextTypes.DEFAULT_TYPE, message):
@@ -293,21 +303,17 @@ async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     chat_id = update.effective_chat.id
 
-    # 1. Jawab callback query & hapus pesan menu yang diklik
     if update.callback_query:
         await update.callback_query.answer("Memulai pembersihan riwayat...")
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=update.callback_query.message.message_id)
         except Exception:
-            pass # Lanjutkan jika pesan sudah terhapus
+            pass
 
-    # 2. Kirim pesan status "Sedang menghapus"
     loading_msg = await context.bot.send_message(chat_id=chat_id, text="🔄 <b>Sedang menghapus pesan...</b>", parse_mode="HTML")
 
-    # 3. Kumpulkan semua ID pesan yang akan dihapus
     messages_to_clear = list(set(context.user_data.get('messages_to_clear', [])))
     
-    # 4. Buat dan jalankan semua task penghapusan secara bersamaan (Optimal)
     delete_tasks = [
         context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
         for msg_id in messages_to_clear
@@ -317,13 +323,11 @@ async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     results = await asyncio.gather(*delete_tasks, return_exceptions=True)
     success_count = sum(1 for result in results if not isinstance(result, Exception))
     
-    # 5. Hapus pesan status
     try:
         await context.bot.delete_message(chat_id=chat_id, message_id=loading_msg.message_id)
     except Exception:
         pass
 
-    # 6. Reset daftar pesan dan kirim konfirmasi
     context.user_data['messages_to_clear'] = []
 
     confirmation_text = (
@@ -376,12 +380,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Pilih layanan yang Anda butuhkan dari menu di bawah ini."
     )
     
-    # Tombol Aksi Utama yang diperbarui
     keyboard = [
         [InlineKeyboardButton("📶 Paket Data", callback_data="main_paket"), InlineKeyboardButton("💰 Pulsa Reguler", callback_data="main_pulsa")],
-        [InlineKeyboardButton("🔍 Cek Info Nomor", callback_data="ask_for_number"), InlineKeyboardButton("📊 Cek Kuota", url="https://t.me/dompetpulsabot")],
-        [InlineKeyboardButton("🖼️ Buat QR Code", callback_data="ask_for_qr"), InlineKeyboardButton("🎮 Mini Game", callback_data="main_game")],
-        [InlineKeyboardButton("🆘 Bantuan", callback_data="main_bantuan"), InlineKeyboardButton("🗑️ Bersihkan Chat", callback_data="clear_history")],
+        [InlineKeyboardButton("🔍 Cek Info Nomor", callback_data="ask_for_number"), InlineKeyboardButton("🛠️ Tools & Hiburan", callback_data="main_tools")],
+        [InlineKeyboardButton("📊 Cek Kuota (XL/Axis)", url="https://sidompul.kmsp-store.com/"), InlineKeyboardButton("🆘 Bantuan", callback_data="main_bantuan")],
+        [InlineKeyboardButton("🗑️ Bersihkan Chat", callback_data="clear_history")],
         [InlineKeyboardButton("🌐 Kunjungi Website Kami", url="https://pulsanet.kesug.com/beli.html")]
     ]
 
@@ -465,25 +468,74 @@ async def show_bantuan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(PAKET_DESCRIPTIONS["bantuan"], reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali ke Menu Utama", callback_data="back_to_start")]]), parse_mode="HTML", disable_web_page_preview=True)
 
 # ==============================================================================
-# FUNGSI UNTUK FITUR BARU (CEK NOMOR, QR, GAME)
+# FUNGSI UNTUK MENU BARU (TOOLS & HIBURAN)
+# ==============================================================================
+
+async def show_tools_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Menampilkan menu untuk Tools & Hiburan."""
+    query = update.callback_query
+    await query.answer()
+    
+    text = "<b>🛠️ Tools & Hiburan</b>\n\nPilih salah satu alat atau hiburan yang tersedia di bawah ini."
+    
+    keyboard = [
+        [InlineKeyboardButton("🖼️ Buat QR Code", callback_data="ask_for_qr"), InlineKeyboardButton("🎮 Mini Game", callback_data="main_game")],
+        [InlineKeyboardButton("▶️ YouTube Downloader", callback_data="ask_for_youtube"), InlineKeyboardButton("🎵 Spotify Downloader", callback_data="ask_for_spotify")],
+        [InlineKeyboardButton("⬅️ Kembali ke Menu Utama", callback_data="back_to_start")]
+    ]
+    
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
+async def feature_coming_soon(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler untuk fitur Spotify yang masih dalam pengembangan."""
+    query = update.callback_query
+    await query.answer("Fitur ini akan segera hadir!", show_alert=True)
+    
+    feature_name = "Spotify Downloader"
+        
+    text = (f"<b>⚙️ Segera Hadir: {feature_name}</b>\n\n"
+            "⚠️ <i>Fitur ini sedang dalam tahap pengembangan aktif dan akan tersedia dalam pembaruan berikutnya.</i>\n\n"
+            "Terima kasih atas kesabaran dan dukungan Anda!")
+            
+    keyboard = [
+        [InlineKeyboardButton("⬅️ Kembali ke Menu Tools", callback_data="main_tools")],
+        [InlineKeyboardButton("🏠 Kembali ke Menu Utama", callback_data="back_to_start")]
+    ]
+    
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
+# ==============================================================================
+# FUNGSI UNTUK FITUR YANG SUDAH ADA & BARU
 # ==============================================================================
 
 async def prompt_for_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     action = query.data
+    
+    text = ""
+    back_button_callback = "back_to_start"
+
     if action == "ask_for_number":
         context.user_data['state'] = 'awaiting_number'
         text = ("<b>🔍 Cek Info Nomor Telepon</b>\n\n"
                 "Silakan kirimkan satu atau beberapa nomor HP yang ingin Anda periksa.\n\n"
-                "Fitur ini akan mendeteksi <b>Negara (termasuk bendera)</b> dan <b>Provider</b> secara otomatis. Gunakan format internasional (contoh: <code>+6281234567890</code>) untuk hasil paling akurat.")
+                "Gunakan format internasional (contoh: <code>+6281234567890</code>) untuk hasil paling akurat.")
     elif action == "ask_for_qr":
         context.user_data['state'] = 'awaiting_qr_text'
         text = ("<b>🖼️ Generator QR Code</b>\n\n"
-                "Kirimkan teks, tautan (misal: <code>google.com</code>), atau nomor HP (misal: <code>08123456789</code>) yang ingin Anda jadikan QR Code.")
+                "Kirimkan teks, tautan, atau nomor HP yang ingin Anda jadikan QR Code.")
+        back_button_callback = "main_tools"
+    elif action == "ask_for_youtube":
+        context.user_data['state'] = 'awaiting_youtube_link'
+        text = ("<b>▶️ YouTube Downloader</b>\n\n"
+                "Kirimkan link video YouTube yang ingin Anda unduh.\n"
+                "<i>Contoh: https://www.youtube.com/watch?v=...</i>")
+        back_button_callback = "main_tools"
     else:
         return
-    keyboard = [[InlineKeyboardButton("⬅️ Batal & Kembali", callback_data="back_to_start")]]
+        
+    keyboard = [[InlineKeyboardButton("⬅️ Batal & Kembali", callback_data=back_button_callback)]]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
 def get_provider_info(phone_number: str) -> str:
@@ -493,7 +545,6 @@ def get_provider_info(phone_number: str) -> str:
     country_name = "Tidak Diketahui ❓"
     country_code = None
     
-    # Cari kode negara terpanjang yang cocok dari awal nomor
     for code in sorted(COUNTRY_CODES.keys(), key=len, reverse=True):
         if cleaned_number.startswith(code):
             country_code = code
@@ -503,7 +554,7 @@ def get_provider_info(phone_number: str) -> str:
     provider_found = "Tidak Terdeteksi"
     number_after_cc = cleaned_number[len(country_code):] if country_code else cleaned_number
     
-    if country_code == '62': # Logika Deteksi Provider Indonesia
+    if country_code == '62':
         normalized_number = '0' + number_after_cc if number_after_cc.startswith('8') else number_after_cc
         if 10 <= len(normalized_number) <= 13:
             prefix = normalized_number[:4]
@@ -514,7 +565,7 @@ def get_provider_info(phone_number: str) -> str:
             if provider_found == "Telkomsel" and prefix in PROVIDER_PREFIXES["By.U"]:
                 provider_found = "Telkomsel / By.U"
     
-    elif country_code in INTERNATIONAL_PROVIDER_PREFIXES: # Logika Deteksi Provider Internasional
+    elif country_code in INTERNATIONAL_PROVIDER_PREFIXES:
         provider_data = INTERNATIONAL_PROVIDER_PREFIXES[country_code]
         for length in sorted([len(p) for provider in provider_data.values() for p in provider], reverse=True):
             if len(number_after_cc) >= length:
@@ -526,7 +577,6 @@ def get_provider_info(phone_number: str) -> str:
                 if provider_found != "Tidak Terdeteksi":
                     break
 
-    # Format Output yang lebih lengkap dan profesional
     display_number = f"+{cleaned_number}" if country_code else phone_number
     
     if not country_code and not cleaned_number.startswith('08'):
@@ -540,12 +590,82 @@ def get_provider_info(phone_number: str) -> str:
     
     return output
 
+async def download_youtube_video(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str):
+    """Fungsi untuk mengunduh video dari YouTube."""
+    chat_id = update.effective_chat.id
+    status_msg = await context.bot.send_message(chat_id, "🔍 <b>Menganalisis link...</b>", parse_mode="HTML")
+    await track_message(context, status_msg)
+
+    try:
+        # Menampilkan status 'typing...' atau 'uploading_video'
+        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+
+        ydl_opts = {
+            'format': 'best[ext=mp4][height<=720]/best[ext=mp4]/best', # Prioritas: MP4 720p, lalu MP4 terbaik, lalu format terbaik
+            'outtmpl': '%(title)s.%(ext)s',
+            'noplaylist': True,
+            'quiet': True,
+            'no_warnings': True,
+            'logger': logger,
+            'progress_hooks': [lambda d: logger.info(d['status'])],
+            # Batasi ukuran file untuk mencegah penyalahgunaan (misal: 50MB)
+            'max_filesize': 50 * 1024 * 1024, 
+        }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            await status_msg.edit_text("📥 <b>Sedang mengunduh video...</b>\n\n<i>Proses ini mungkin memakan waktu beberapa saat tergantung ukuran video.</i>", parse_mode="HTML")
+            info_dict = ydl.extract_info(url, download=True)
+            file_path = ydl.prepare_filename(info_dict)
+            
+            if not os.path.exists(file_path):
+                 raise ValueError("File tidak ditemukan setelah proses unduh.")
+
+            file_size = os.path.getsize(file_path)
+            if file_size > 50 * 1024 * 1024:
+                # Hapus file jika melebihi batas Telegram
+                os.remove(file_path)
+                await status_msg.edit_text(f"❌ <b>Gagal!</b> Ukuran video ({(file_size / 1024 / 1024):.2f} MB) melebihi batas maksimal 50 MB.", parse_mode="HTML")
+                return
+
+        await status_msg.edit_text("📤 <b>Sedang mengirim video...</b>", parse_mode="HTML")
+        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.UPLOAD_VIDEO)
+
+        video_caption = f"<b>{safe_html(info_dict.get('title', 'Video'))}</b>\n\n" \
+                        f"Diunduh dengan @{context.bot.username}"
+        
+        sent_video = await context.bot.send_video(chat_id=chat_id, video=open(file_path, 'rb'), caption=video_caption, parse_mode="HTML", read_timeout=120, write_timeout=120)
+        await track_message(context, sent_video)
+        
+        await status_msg.delete()
+
+        # Membersihkan file setelah dikirim
+        try:
+            os.remove(file_path)
+        except OSError as e:
+            logger.error(f"Error saat menghapus file {file_path}: {e}")
+
+    except yt_dlp.utils.DownloadError as e:
+        error_message = str(e).lower()
+        if 'unsupported url' in error_message:
+            reply_text = "❌ <b>Gagal!</b> Link yang Anda berikan tidak didukung."
+        elif 'video unavailable' in error_message:
+            reply_text = "❌ <b>Gagal!</b> Video tidak tersedia atau bersifat pribadi."
+        elif 'max filesize' in error_message:
+             reply_text = "❌ <b>Gagal!</b> Ukuran video melebihi batas maksimal yang diizinkan (50 MB)."
+        else:
+            reply_text = f"❌ <b>Gagal mengunduh!</b> Pastikan link valid dan video tidak dibatasi.\n\n<pre>{safe_html(e)}</pre>"
+        await status_msg.edit_text(reply_text, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Terjadi error tak terduga di YouTube Downloader: {e}")
+        await status_msg.edit_text(f"❌ <b>Terjadi kesalahan tak terduga.</b> Silakan coba lagi nanti.\n\n<code>Error: {safe_html(e)}</code>", parse_mode="HTML")
+
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Fungsi yang diperbaiki untuk melacak SEMUA balasan bot agar bisa dihapus."""
+    """Fungsi yang diperbaiki untuk menangani semua jenis input teks."""
     await track_message(context, update.message)
     state = context.user_data.get('state')
     message_text = update.message.text
     
+    # --- Handler untuk State Spesifik ---
     if state == 'awaiting_number':
         phone_numbers = re.findall(r'(?:\+\d{1,4}|0|62)\d{8,15}\b', message_text)
         
@@ -554,7 +674,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             sent_msg1 = await update.message.reply_text("✅ <b>Hasil Pengecekan Lengkap:</b>\n\n" + "\n\n".join(responses), parse_mode="HTML")
             await track_message(context, sent_msg1)
         else:
-            sent_msg1 = await update.message.reply_text("Maaf, format nomor telepon tidak valid. Pastikan Anda menyertakan kode negara (misal: +62) atau awalan 08 untuk hasil terbaik.")
+            sent_msg1 = await update.message.reply_text("Format nomor telepon tidak valid. Gunakan awalan +62 atau 08.")
             await track_message(context, sent_msg1)
         
         context.user_data.pop('state', None)
@@ -564,6 +684,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         ]
         sent_msg2 = await update.message.reply_text("Apa yang ingin Anda lakukan selanjutnya?", reply_markup=InlineKeyboardMarkup(keyboard))
         await track_message(context, sent_msg2)
+        return
 
     elif state == 'awaiting_qr_text':
         loading_msg = await update.message.reply_text("⏳ Membuat QR Code...")
@@ -584,29 +705,46 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             sent_photo = await update.message.reply_photo(photo=bio, caption=caption_text, parse_mode="HTML")
             await track_message(context, sent_photo)
             await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=loading_msg.message_id)
-
         except Exception as e:
-            await loading_msg.edit_text(f"Terjadi kesalahan saat membuat QR Code: {e}")
+            await loading_msg.edit_text(f"Terjadi kesalahan: {e}")
 
         context.user_data.pop('state', None)
         keyboard = [
             [InlineKeyboardButton("🖼️ Buat QR Lain", callback_data="ask_for_qr")],
+            [InlineKeyboardButton("⬅️ Kembali ke Menu Tools", callback_data="main_tools")]
+        ]
+        sent_msg2 = await update.message.reply_text("Apa yang ingin Anda lakukan selanjutnya?", reply_markup=InlineKeyboardMarkup(keyboard))
+        await track_message(context, sent_msg2)
+        return
+        
+    elif state == 'awaiting_youtube_link':
+        # Validasi sederhana untuk link YouTube
+        if "youtube.com/" in message_text or "youtu.be/" in message_text:
+            await download_youtube_video(update, context, message_text)
+        else:
+            sent_msg = await update.message.reply_text("Link YouTube tidak valid. Mohon kirim link yang benar.")
+            await track_message(context, sent_msg)
+        
+        context.user_data.pop('state', None)
+        keyboard = [
+            [InlineKeyboardButton("▶️ Unduh Video Lain", callback_data="ask_for_youtube")],
             [InlineKeyboardButton("🏠 Kembali ke Menu Utama", callback_data="back_to_start")]
         ]
         sent_msg2 = await update.message.reply_text("Apa yang ingin Anda lakukan selanjutnya?", reply_markup=InlineKeyboardMarkup(keyboard))
         await track_message(context, sent_msg2)
-        
+        return
+
+    # --- Handler Umum (jika tidak ada state) ---
+    phone_numbers = re.findall(r'(?:\+\d{1,4}|0|62)\d{8,15}\b', message_text)
+    if phone_numbers:
+        responses = [get_provider_info(num) for num in phone_numbers]
+        sent_msg = await update.message.reply_text("💡 <b>Info Nomor Terdeteksi Otomatis:</b>\n\n" + "\n\n".join(responses) +
+                                                  "\n\n_Gunakan 'Cek Info Nomor' dari menu /start untuk cek manual._",
+                                                  parse_mode="HTML")
+        await track_message(context, sent_msg)
     else:
-        phone_numbers = re.findall(r'(?:\+\d{1,4}|0|62)\d{8,15}\b', message_text)
-        if phone_numbers:
-            responses = [get_provider_info(num) for num in phone_numbers]
-            sent_msg = await update.message.reply_text("💡 <b>Info Nomor Terdeteksi Otomatis:</b>\n\n" + "\n\n".join(responses) +
-                                                      "\n\n_Untuk pengecekan manual, gunakan tombol 'Cek Info Nomor' dari menu /start._",
-                                                       parse_mode="HTML")
-            await track_message(context, sent_msg)
-        else:
-            sent_msg = await update.message.reply_text("Perintah tidak dikenal. Silakan gunakan /start untuk melihat semua menu yang tersedia.")
-            await track_message(context, sent_msg)
+        sent_msg = await update.message.reply_text("Perintah tidak dikenal. Silakan gunakan /start untuk melihat menu.")
+        await track_message(context, sent_msg)
 
 async def show_game_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -614,9 +752,9 @@ async def show_game_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton("Batu 🗿", callback_data="game_play_rock"),
                  InlineKeyboardButton("Gunting ✂️", callback_data="game_play_scissors"),
                  InlineKeyboardButton("Kertas 📄", callback_data="game_play_paper")],
-                [InlineKeyboardButton("⬅️ Kembali ke Menu Utama", callback_data="back_to_start")]]
+                [InlineKeyboardButton("⬅️ Kembali ke Menu Tools", callback_data="main_tools")]]
     await query.edit_message_text("<b>🎮 Game Batu-Gunting-Kertas</b>\n\nAyo bermain! Pilih jagoanmu:",
-                                     reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+                                      reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
 async def play_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -647,7 +785,7 @@ async def play_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not TOKEN:
-        raise ValueError("Token bot tidak ditemukan! Silakan atur TELEGRAM_BOT_TOKEN di environment variable Anda.")
+        raise ValueError("Token bot tidak ditemukan! Atur TELEGRAM_BOT_TOKEN di environment variable.")
     app = Application.builder().token(TOKEN).build()
     
     # Menambahkan handler
@@ -655,16 +793,26 @@ def main():
     app.add_handler(CallbackQueryHandler(start, pattern='^back_to_start$'))
     app.add_handler(CallbackQueryHandler(clear_history, pattern='^clear_history$'))
     app.add_handler(CallbackQueryHandler(show_bantuan, pattern='^main_bantuan$'))
+    
+    # Handler Menu Utama
     app.add_handler(CallbackQueryHandler(show_operator_menu, pattern=r'^main_(paket|pulsa)$'))
+    app.add_handler(CallbackQueryHandler(show_tools_menu, pattern='^main_tools$'))
+    
+    # Handler Submenu
     app.add_handler(CallbackQueryHandler(show_xl_paket_submenu, pattern=r'^list_paket_xl$'))
     app.add_handler(CallbackQueryHandler(show_product_list, pattern=r'^list_(paket|pulsa)_.+$'))
     app.add_handler(CallbackQueryHandler(show_package_details, pattern=f'^({"|".join(re.escape(k) for k in ALL_PACKAGES_DATA)})$'))
-    app.add_handler(CallbackQueryHandler(prompt_for_action, pattern=r'^ask_for_(number|qr)$'))
+    
+    # Handler Fitur Tools
+    app.add_handler(CallbackQueryHandler(prompt_for_action, pattern=r'^ask_for_(number|qr|youtube)$'))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
     app.add_handler(CallbackQueryHandler(show_game_menu, pattern='^main_game$'))
     app.add_handler(CallbackQueryHandler(play_game, pattern=r'^game_play_(rock|scissors|paper)$'))
-    
-    print("🤖 Bot Pulsa Net (v9.21 - Optimalisasi Pembersihan) sedang berjalan...")
+
+    # Handler Fitur "Coming Soon" (Hanya untuk Spotify sekarang)
+    app.add_handler(CallbackQueryHandler(feature_coming_soon, pattern=r'^ask_for_spotify$'))
+
+    print("🤖 Bot Pulsa Net (v11.0 - YouTube Downloader) sedang berjalan...")
     app.run_polling()
 
 if __name__ == "__main__":
