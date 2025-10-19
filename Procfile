@@ -1,1 +1,1 @@
-worker: python bot_pulsanet_secure.py
+worker: python bot_pulsanet.py
