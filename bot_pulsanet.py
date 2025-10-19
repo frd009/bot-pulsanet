@@ -2,7 +2,7 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
 # Developer: frd009
-# Versi: 14.0 (Pilihan Kualitas YT, Kalkulator Kurs, Deteksi Nomor Global)
+# Versi: 14.1 (Perbaikan NameError: get_products)
 #
 # CATATAN: Pastikan Anda menginstal semua library yang dibutuhkan
 # dengan menjalankan: pip install -r requirements.txt
@@ -141,6 +141,22 @@ def format_bytes(size):
 ALL_PACKAGES_DATA = {create_package_key(pkg): pkg for pkg in ALL_PACKAGES_RAW}
 PRICES = {key: data['price'] for key, data in ALL_PACKAGES_DATA.items()}
 
+# === FUNGSI YANG HILANG DITAMBAHKAN KEMBALI DI SINI ===
+def get_products(category=None, product_type=None, special_type=None):
+    filtered_items = ALL_PACKAGES_DATA.items()
+    if category:
+        filtered_items = [item for item in filtered_items if item[1].get('category', '').lower() == category.lower()]
+    if special_type:
+        filtered_items = [item for item in filtered_items if item[1].get('type', '').lower() == special_type.lower()]
+    elif product_type:
+        if category and category.lower() == 'xl' and product_type.lower() == 'paket':
+            special_types = ['akrab', 'bebaspuas', 'circle']
+            filtered_items = [item for item in filtered_items if item[1].get('type', '').lower() == 'paket' and item[1].get('type').lower() not in special_types]
+        else:
+            filtered_items = [item for item in filtered_items if item[1].get('type', '').lower() == product_type.lower()]
+    return {key: data['name'] for key, data in filtered_items}
+# ======================================================
+
 AKRAB_QUOTA_DETAILS = {
     "pkg_305_xl_akrab_mini_v2": {"1": "31GB - 33GB", "2": "33GB - 35GB", "3": "38GB - 40GB", "4": "48GB - 50GB"},
     "pkg_307_xl_akrab_big_v2": {"1": "38GB - 40GB", "2": "40GB - 42GB", "3": "45GB - 47GB", "4": "55GB - 57GB"},
@@ -222,7 +238,7 @@ PAKET_DESCRIPTIONS["bantuan"] = ("<b>Pusat Bantuan & Informasi</b> 🆘\n\n"
                                      "📞 <b>Admin:</b> @hexynos\n" "🌐 <b>Website Resmi:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
 
 # ==============================================================================
-# 🤖 FUNGSI HANDLER BOT (VERSI 14.0)
+# 🤖 FUNGSI HANDLER BOT (VERSI 14.1)
 # ==============================================================================
 
 async def track_message(context: ContextTypes.DEFAULT_TYPE, message):
@@ -657,11 +673,11 @@ async def handle_youtube_download_choice(update: Update, context: ContextTypes.D
         elif 'max filesize' in error_message:
              reply_text = "❌ <b>Gagal!</b> Ukuran file melebihi batas 50 MB."
         await status_msg.edit_text(reply_text, parse_mode=ParseMode.HTML)
-        if os.path.exists(file_path): os.remove(file_path) # Hapus file jika gagal
+        if 'file_path' in locals() and os.path.exists(file_path): os.remove(file_path) # Hapus file jika gagal
     except Exception as e:
         logger.error(f"Terjadi error tak terduga di YouTube Download: {e}")
         await status_msg.edit_text(f"❌ <b>Terjadi kesalahan tak terduga.</b>\n\n<code>Error: {safe_html(e)}</code>", parse_mode=ParseMode.HTML)
-        if os.path.exists(file_path): os.remove(file_path)
+        if 'file_path' in locals() and os.path.exists(file_path): os.remove(file_path)
 
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await track_message(context, update.message)
@@ -797,9 +813,8 @@ def main():
     # Handler untuk Download YouTube
     app.add_handler(CallbackQueryHandler(handle_youtube_download_choice, pattern=r'^yt_dl\|.+$'))
 
-    print("🤖 Bot Pulsa Net (v14.0 - Fitur Lengkap) sedang berjalan...")
+    print("🤖 Bot Pulsa Net (v14.1 - Perbaikan Eror) sedang berjalan...")
     app.run_polling()
 
 if __name__ == "__main__":
     main()
-
