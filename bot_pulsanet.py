@@ -2,7 +2,7 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
 # Developer: frd009
-# Versi: 11.0
+# Versi: 12.1 (Notifikasi Kedaluwarsa Cookies)
 #
 # CATATAN: Pastikan Anda menginstal semua library yang dibutuhkan
 # dengan menjalankan: pip install -r requirements.txt
@@ -287,7 +287,7 @@ PAKET_DESCRIPTIONS["bantuan"] = ("<b>Pusat Bantuan & Informasi</b> 🆘\n\n"
                                      "📞 <b>Admin:</b> @hexynos\n" "🌐 <b>Website Resmi:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
 
 # ==============================================================================
-# 🤖 FUNGSI HANDLER BOT (VERSI 11.0)
+# 🤖 FUNGSI HANDLER BOT (VERSI 12.1)
 # ==============================================================================
 
 async def track_message(context: ContextTypes.DEFAULT_TYPE, message):
@@ -597,23 +597,26 @@ async def download_youtube_video(update: Update, context: ContextTypes.DEFAULT_T
     await track_message(context, status_msg)
 
     try:
-        # Menampilkan status 'typing...' atau 'uploading_video'
         await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
 
         ydl_opts = {
-            'format': 'best[ext=mp4][height<=720]/best[ext=mp4]/best', # Prioritas: MP4 720p, lalu MP4 terbaik, lalu format terbaik
+            'format': 'best[ext=mp4][height<=720]/best[ext=mp4]/best',
             'outtmpl': '%(title)s.%(ext)s',
             'noplaylist': True,
             'quiet': True,
             'no_warnings': True,
             'logger': logger,
             'progress_hooks': [lambda d: logger.info(d['status'])],
-            # Batasi ukuran file untuk mencegah penyalahgunaan (misal: 50MB)
-            'max_filesize': 50 * 1024 * 1024, 
+            'max_filesize': 50 * 1024 * 1024,
+            'cookiefile': 'youtube_cookies.txt',
         }
 
+        if not os.path.exists('youtube_cookies.txt'):
+             await status_msg.edit_text("❌ <b>Konfigurasi Eror!</b>\nFile `youtube_cookies.txt` tidak ditemukan di server. Hubungi admin.", parse_mode="HTML")
+             return
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            await status_msg.edit_text("📥 <b>Sedang mengunduh video...</b>\n\n<i>Proses ini mungkin memakan waktu beberapa saat tergantung ukuran video.</i>", parse_mode="HTML")
+            await status_msg.edit_text("📥 <b>Sedang mengunduh video...</b>\n\n<i>Proses ini mungkin memakan waktu beberapa saat.</i>", parse_mode="HTML")
             info_dict = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info_dict)
             
@@ -622,9 +625,8 @@ async def download_youtube_video(update: Update, context: ContextTypes.DEFAULT_T
 
             file_size = os.path.getsize(file_path)
             if file_size > 50 * 1024 * 1024:
-                # Hapus file jika melebihi batas Telegram
                 os.remove(file_path)
-                await status_msg.edit_text(f"❌ <b>Gagal!</b> Ukuran video ({(file_size / 1024 / 1024):.2f} MB) melebihi batas maksimal 50 MB.", parse_mode="HTML")
+                await status_msg.edit_text(f"❌ <b>Gagal!</b> Ukuran video ({(file_size / 1024 / 1024):.2f} MB) melebihi batas 50 MB.", parse_mode="HTML")
                 return
 
         await status_msg.edit_text("📤 <b>Sedang mengirim video...</b>", parse_mode="HTML")
@@ -638,7 +640,6 @@ async def download_youtube_video(update: Update, context: ContextTypes.DEFAULT_T
         
         await status_msg.delete()
 
-        # Membersihkan file setelah dikirim
         try:
             os.remove(file_path)
         except OSError as e:
@@ -646,18 +647,31 @@ async def download_youtube_video(update: Update, context: ContextTypes.DEFAULT_T
 
     except yt_dlp.utils.DownloadError as e:
         error_message = str(e).lower()
-        if 'unsupported url' in error_message:
+        reply_text = f"❌ <b>Gagal mengunduh!</b>\n\n<pre>{safe_html(e)}</pre>"
+        if 'sign in to confirm' in error_message:
+             reply_text = (
+                 "🛑 <b>AUTENTIKASI GAGAL (Cookies Kedaluwarsa)</b> 🛑\n\n"
+                 "YouTube memblokir unduhan karena file `youtube_cookies.txt` di server sudah tidak valid.\n\n"
+                 "<b>Untuk Admin (Anda):</b> Silakan perbarui cookies dengan langkah berikut:\n"
+                 "1. Buka browser di PC & <b>login ke YouTube</b>.\n"
+                 "2. Gunakan ekstensi <b>'Cookie-Editor'</b>.\n"
+                 "3. Klik <b>Export</b> ➜ Pilih format <b>Netscape</b> ➜ Export.\n"
+                 "4. Buka file `cookies.txt` yang terunduh.\n"
+                 "5. Salin semua isinya dan tempelkan ke file `youtube_cookies.txt` di proyek bot Anda.\n"
+                 "6. Deploy ulang bot ke Railway.\n\n"
+                 "<i>Fitur ini akan normal kembali setelah cookies diperbarui.</i>"
+             )
+        elif 'unsupported url' in error_message:
             reply_text = "❌ <b>Gagal!</b> Link yang Anda berikan tidak didukung."
         elif 'video unavailable' in error_message:
             reply_text = "❌ <b>Gagal!</b> Video tidak tersedia atau bersifat pribadi."
         elif 'max filesize' in error_message:
-             reply_text = "❌ <b>Gagal!</b> Ukuran video melebihi batas maksimal yang diizinkan (50 MB)."
-        else:
-            reply_text = f"❌ <b>Gagal mengunduh!</b> Pastikan link valid dan video tidak dibatasi.\n\n<pre>{safe_html(e)}</pre>"
+             reply_text = "❌ <b>Gagal!</b> Ukuran video melebihi batas 50 MB."
         await status_msg.edit_text(reply_text, parse_mode="HTML")
     except Exception as e:
         logger.error(f"Terjadi error tak terduga di YouTube Downloader: {e}")
         await status_msg.edit_text(f"❌ <b>Terjadi kesalahan tak terduga.</b> Silakan coba lagi nanti.\n\n<code>Error: {safe_html(e)}</code>", parse_mode="HTML")
+
 
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Fungsi yang diperbaiki untuk menangani semua jenis input teks."""
@@ -718,7 +732,6 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
         
     elif state == 'awaiting_youtube_link':
-        # Validasi sederhana untuk link YouTube
         if "youtube.com/" in message_text or "youtu.be/" in message_text:
             await download_youtube_video(update, context, message_text)
         else:
@@ -812,8 +825,9 @@ def main():
     # Handler Fitur "Coming Soon" (Hanya untuk Spotify sekarang)
     app.add_handler(CallbackQueryHandler(feature_coming_soon, pattern=r'^ask_for_spotify$'))
 
-    print("🤖 Bot Pulsa Net (v11.0 - YouTube Downloader) sedang berjalan...")
+    print("🤖 Bot Pulsa Net (v12.1 - Notifikasi Cookies) sedang berjalan...")
     app.run_polling()
 
 if __name__ == "__main__":
     main()
+
