@@ -1,4 +1,8 @@
 python-telegram-bot
+yt-dlp
 qrcode
 Pillow
-yt-dlp
+gTTS
+phonenumbers
+pycountry
+httpx
