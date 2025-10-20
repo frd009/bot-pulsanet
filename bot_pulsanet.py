@@ -2,12 +2,12 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
 # Developer: frd009
-# Versi: 15.3 (Admin Error Logging & UX Improvements)
+# Versi: 15.4 (YouTube Flow & Cookie Fix)
 #
-# CHANGELOG v15.3:
-# - IMPROVEMENT: Specific technical errors (e.g., YouTube cookie issues) are now logged privately to the admin.
-# - IMPROVEMENT: Users are shown a generic, friendly message for backend errors instead of technical details.
-# - All previous fixes from v15.2 are retained.
+# CHANGELOG v15.4:
+# - FIX: Disabled yt-dlp caching ('cachedir': False) to resolve recurring cookie authentication errors.
+# - FEATURE: Added a follow-up menu ("Download Another", "Back to Tools") after a successful YouTube download.
+# - All previous fixes from v15.3 are retained.
 # ============================================
 
 import os
@@ -642,7 +642,14 @@ async def show_youtube_quality_options(update: Update, context: ContextTypes.DEF
         status_msg = await context.bot.send_message(update.effective_chat.id, "🔍 <b>Menganalisis link...</b>", parse_mode=ParseMode.HTML)
         await track_message(context, status_msg)
         
-        ydl_opts = {'quiet': True, 'no_warnings': True, 'cookiefile': 'youtube_cookies.txt', 'noplaylist': True}
+        # FIX: Added 'cachedir': False to prevent cookie/session caching issues.
+        ydl_opts = {
+            'quiet': True, 
+            'no_warnings': True, 
+            'cookiefile': 'youtube_cookies.txt', 
+            'noplaylist': True,
+            'cachedir': False 
+        }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=False)
         
@@ -674,25 +681,20 @@ async def show_youtube_quality_options(update: Update, context: ContextTypes.DEF
                                    reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
     except yt_dlp.utils.DownloadError as e:
         error_str = str(e).lower()
-        # IMPROVEMENT: Check for cookie/auth errors to log privately
         if 'sign in to confirm' in error_str or 'no suitable proxies' in error_str or '410 gone' in error_str:
-            # This is a backend issue, log to admin and show generic message to user
             await send_admin_log(context, e, update, "show_youtube_quality_options (Cookie/Auth Error)")
             reply_text = "Maaf, terjadi kendala teknis pada layanan unduh video. Tim kami telah diberitahu."
-        # User-facing errors
         elif 'private video' in error_str:
             reply_text = "❌ Video ini adalah video pribadi dan tidak dapat diunduh."
         elif 'this video is unavailable' in error_str:
             reply_text = "❌ Video ini tidak tersedia atau telah dihapus."
         else:
-            # Other download errors, still log them but show a slightly more specific generic message
             await send_admin_log(context, e, update, "show_youtube_quality_options (DownloadError)")
             reply_text = "Maaf, terjadi kesalahan saat memproses link video (mungkin video dilindungi hak cipta atau dibatasi)."
         
         if status_msg:
             await status_msg.edit_text(reply_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
     except Exception as e:
-        # All other unexpected errors
         await send_admin_log(context, e, update, "show_youtube_quality_options")
         if status_msg:
             await status_msg.edit_text("Maaf, terjadi kesalahan teknis. Tim kami sudah diberitahu.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
@@ -711,6 +713,8 @@ async def handle_youtube_download_choice(update: Update, context: ContextTypes.D
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
         
         file_path = f"{video_id}_{format_id}.mp4"
+        
+        # FIX: Added 'cachedir': False to prevent cookie/session caching issues.
         ydl_opts = {
             'format': format_id, 
             'outtmpl': file_path, 
@@ -719,7 +723,8 @@ async def handle_youtube_download_choice(update: Update, context: ContextTypes.D
             'no_warnings': True, 
             'logger': logger, 
             'max_filesize': 50 * 1024 * 1024, 
-            'cookiefile': 'youtube_cookies.txt'
+            'cookiefile': 'youtube_cookies.txt',
+            'cachedir': False
         }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -745,14 +750,25 @@ async def handle_youtube_download_choice(update: Update, context: ContextTypes.D
                                                         parse_mode=ParseMode.HTML, read_timeout=120, write_timeout=120)
         await track_message(context, sent_file)
         await status_msg.delete()
-        
+
+        # FEATURE: Add the follow-up action menu
+        keyboard_next_action = InlineKeyboardMarkup([
+            [InlineKeyboardButton("▶️ Unduh Video Lain", callback_data="ask_for_youtube")],
+            [InlineKeyboardButton("⬅️ Kembali ke Menu Tools", callback_data="main_tools")]
+        ])
+        next_action_msg = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="✅ Unduhan selesai. Apa yang ingin Anda lakukan selanjutnya?",
+            reply_markup=keyboard_next_action,
+            parse_mode=ParseMode.HTML
+        )
+        await track_message(context, next_action_msg)
+
     except yt_dlp.utils.DownloadError as e:
         error_str = str(e).lower()
-        # IMPROVEMENT: Check for cookie/auth errors
         if 'sign in to confirm' in error_str or 'no suitable proxies' in error_str or '410 gone' in error_str:
             await send_admin_log(context, e, update, "handle_youtube_download_choice (Cookie/Auth Error)")
             reply_text = "Maaf, terjadi kendala teknis pada layanan unduh video. Tim kami telah diberitahu."
-        # User-facing errors
         elif 'max filesize' in error_str:
             reply_text = "❌ <b>Gagal!</b> Ukuran file melebihi batas 50 MB."
         else:
@@ -948,12 +964,14 @@ def main():
     # Handler untuk Download YouTube
     app.add_handler(CallbackQueryHandler(handle_youtube_download_choice, pattern=r'^yt_dl\|.+'))
 
-    print("🤖 Bot Pulsa Net (v15.3 - Admin Error Logging) sedang berjalan...")
+    print("🤖 Bot Pulsa Net (v15.4 - YouTube Flow & Cookie Fix) sedang berjalan...")
     print("✅ Perbaikan:")
-    print("   - Eror teknis (misal: YouTube cookies) kini dilaporkan ke admin, bukan ke pengguna.")
-    print("   - Pengguna menerima pesan yang lebih ramah saat terjadi eror backend.")
+    print("   - Eror cookies YouTube kini lebih stabil dengan menonaktifkan cache.")
+    print("   - Menambahkan menu follow-up setelah download YouTube berhasil.")
     
     app.run_polling()
 
 if __name__ == "__main__":
     main()
+
+
