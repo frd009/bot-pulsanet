@@ -2,12 +2,12 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
 # Developer: frd009
-# Versi: 16.6 (Penanganan Batas Ukuran File Telegram)
+# Versi: 16.7 (Verifikasi Ukuran File Final)
 #
-# CHANGELOG v16.6:
-# - FIX: Mengatasi error `Request Entity Too Large` dengan menerapkan batas unduhan 50 MB, sesuai dengan limitasi API Telegram Bot.
-# - FEAT: Menambahkan peringatan visual (⚠️ >50MB) pada tombol pilihan kualitas YouTube jika ukuran file diperkirakan melebihi 50 MB.
-# - CHORE: Memperjelas pesan error kepada pengguna ketika file yang dipilih terlalu besar.
+# CHANGELOG v16.7:
+# - FIX: Mengatasi error `Request Entity Too Large` secara tuntas dengan menambahkan pengecekan ukuran file final setelah unduhan selesai.
+#        Jika file ternyata melebihi 50 MB, proses unggah dibatalkan sebelum terjadi error.
+# - CHORE: Sedikit meningkatkan pesan error untuk kasus ini agar lebih informatif bagi pengguna.
 # ============================================
 
 import os
@@ -902,13 +902,30 @@ async def handle_youtube_download_choice(update: Update, context: ContextTypes.D
         if not file_path or not os.path.exists(file_path):  
             # Fallback untuk mencari file jika nama tidak didapat dari info_dict
             expected_ext = 'mp4' if is_video else 'm4a'
-            # yt-dlp might append video ID to filename, so we check broadly
             found_files = [f for f in os.listdir('.') if f.startswith(video_id) and f.endswith(f".{expected_ext}")]
             if found_files:
-                file_path = found_files[0] # Take the first found file
+                file_path = found_files[0]
             else:
                 raise ValueError("File tidak ditemukan setelah unduh.")
         
+        # --- PERBAIKAN BARU: Pengecekan ukuran file final ---
+        final_file_size = os.path.getsize(file_path)
+        if final_file_size > 50 * 1024 * 1024:
+            logger.warning(f"File {file_path} terunduh tetapi ukurannya ({format_bytes(final_file_size)}) melebihi batas 50 MB.")
+            await send_admin_log(
+                context,
+                ValueError(f"File downloaded but size ({format_bytes(final_file_size)}) > 50MB. yt-dlp estimate was inaccurate."),
+                update,
+                "handle_youtube_download_choice",
+                custom_message="File was deleted before upload attempt."
+            )
+            await status_msg.edit_text(
+                f"❌ <b>Gagal!</b> File berhasil diunduh, tetapi ukurannya ({format_bytes(final_file_size)}) melebihi batas unggah bot sebesar 50 MB. Silakan pilih kualitas yang lebih rendah.",
+                reply_markup=keyboard_error_back,
+                parse_mode=ParseMode.HTML
+            )
+            return
+
         try:
             await status_msg.edit_text("📤 <b>Mengirim file...</b>", parse_mode=ParseMode.HTML)
         except BadRequest as e:
@@ -923,10 +940,10 @@ async def handle_youtube_download_choice(update: Update, context: ContextTypes.D
         with open(file_path, 'rb') as f:
             if is_video:
                 sent_file = await context.bot.send_video(update.effective_chat.id, video=f, caption=caption,  
-                                                         parse_mode=ParseMode.HTML, read_timeout=300, write_timeout=300) # Increased timeout
+                                                         parse_mode=ParseMode.HTML, read_timeout=300, write_timeout=300)
             else:
                 sent_file = await context.bot.send_audio(update.effective_chat.id, audio=f, caption=caption,  
-                                                         parse_mode=ParseMode.HTML, read_timeout=300, write_timeout=300) # Increased timeout
+                                                         parse_mode=ParseMode.HTML, read_timeout=300, write_timeout=300)
         await track_message(context, sent_file)
         
         try:
@@ -955,7 +972,7 @@ async def handle_youtube_download_choice(update: Update, context: ContextTypes.D
             await send_admin_log(context, e, update, "handle_youtube_download_choice (Cookie/Auth Error)", custom_message=admin_alert)
             reply_text = "Maaf, terjadi kendala teknis pada layanan unduh video. Tim kami telah diberitahu. (Authentikasi YouTube gagal)"
         elif 'max filesize' in error_str:
-            reply_text = "❌ <b>Gagal!</b> Ukuran file melebihi batas unggah bot (50 MB)."
+            reply_text = "❌ <b>Gagal!</b> Ukuran file yang dipilih melebihi batas unduh bot (50 MB)."
         else:
             await send_admin_log(context, e, update, "handle_youtube_download_choice (DownloadError)")
             reply_text = "Maaf, terjadi kesalahan saat mengunduh file (mungkin video dilindungi hak cipta atau dibatasi)."
@@ -1189,10 +1206,10 @@ def main():
     app.add_handler(CallbackQueryHandler(play_game, pattern=r'^game_play_(rock|scissors|paper)$'))
     app.add_handler(CallbackQueryHandler(handle_youtube_download_choice, pattern=r'^yt_dl\|.+'))
 
-    print("🤖 Bot Pulsa Net (v16.6 - Penanganan Batas Ukuran File Telegram) sedang berjalan...")
+    print("🤖 Bot Pulsa Net (v16.7 - Verifikasi Ukuran File Final) sedang berjalan...")
     print("✅ Perbaikan:")
-    print("   - Mengatasi error 'Request Entity Too Large' dengan menerapkan batas unduhan 50 MB.")
-    print("   - Menambahkan peringatan visual untuk file di atas 50 MB.")
+    print("   - Mengatasi error 'Request Entity Too Large' dengan verifikasi ukuran file final.")
+    print("   - Memperjelas pesan error untuk file yang melebihi batas 50 MB.")
     
     app.run_polling()
 
