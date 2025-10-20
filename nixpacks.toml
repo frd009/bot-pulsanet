@@ -1,0 +1,12 @@
+# Memberitahu Railway untuk menginstal paket sistem tambahan.
+[phases.setup]
+# Meminta instalasi FFmpeg menggunakan package manager 'apt'.
+aptPkgs = ["ffmpeg"]
+
+# Bagian ini memastikan instalasi requirements.txt tetap berjalan seperti biasa.
+[phases.install]
+cmds = ["pip install -r requirements.txt"]
+
+# Bagian ini memastikan bot dijalankan dengan benar setelah build selesai.
+[start]
+cmd = "python bot_pulsanet.py"
