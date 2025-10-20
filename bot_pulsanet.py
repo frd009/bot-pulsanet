@@ -6,11 +6,13 @@
 #
 # CHANGELOG v16.2:
 # - FIX: Mengatasi masalah hilangnya tombol navigasi 'Cek Nomor Lain' setelah pengecekan nomor pertama.
-#   Sekarang, bot akan mempertahankan status 'awaiting_number' dan selalu menampilkan 'Cek Nomor Lain'
-#   atau 'Kembali ke Menu Utama' setelah setiap pengecekan nomor.
+#   Sekarang, bot akan mempertahankan status 'awaiting_number' dan selalu menampilkan 'Cek Nomor Lain'
+#   atau 'Kembali ke Menu Utama' setelah setiap pengecekan nomor.
 # - FIX: Memastikan keyboard 'Cek Nomor Lain' juga ditampilkan untuk input nomor yang tidak valid,
-#   memberikan konsistensi navigasi.
+#   memberikan konsistensi navigasi.
 # - RESTRUCTURE: Semua fitur dan perbaikan dari v16.1 (NameError Fix & Code Restructure) tetap dipertahankan.
+# - FIX: Menambahkan penanganan error untuk "Message is not modified" saat mengedit pesan,
+#        untuk mencegah crash bot pada klik berulang atau pembaruan yang tidak menghasilkan perubahan.
 # ============================================
 
 import os
@@ -37,7 +39,7 @@ import pycountry
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.constants import ChatAction, ParseMode
-from telegram.error import TelegramError, RetryAfter
+from telegram.error import TelegramError, RetryAfter, BadRequest # Import BadRequest explicitly
 
 # Konfigurasi logging
 logging.basicConfig(
@@ -89,6 +91,7 @@ ALL_PACKAGES_RAW = [
     {'id': 271, 'name': "Tsel 8gb 30 Hari", 'price': 68000, 'category': 'Telkomsel', 'type': 'Paket', 'data': '8 GB', 'validity': '30 Hari', 'details': '8gb + Bonus Extra Kuota'},
     {'id': 129, 'name': "By.U Promo 9GB 30Hari", 'price': 27000, 'category': 'By.U', 'type': 'Paket', 'data': '9 GB', 'validity': '30 Hari', 'details': 'Kuota 9GB, Nasional'},
     {'id': 132, 'name': "By.U Promo 20GB 30Hari", 'price': 47000, 'category': 'By.U', 'type': 'Paket', 'data': '20 GB', 'validity': '30 Hari', 'details': 'Kuota 20GB, Nasional'},
+    {'id': 142, 'name': "By.U Promo 20GB 30Hari", 'price': 47000, 'category': 'By.U', 'type': 'Paket', 'data': '20 GB', 'validity': '30 Hari', 'details': 'Kuota 20GB, Nasional'},
     # Pulsa
     {'id': 247, 'name': "XL Pulsa 10.000", 'price': 11000, 'category': 'XL', 'type': 'Pulsa', 'data': 'Rp 10.000', 'validity': '+15 Hari', 'details': 'Pulsa Reguler 10.000'},
     {'id': 249, 'name': "XL Pulsa 25.000", 'price': 25000, 'category': 'XL', 'type': 'Pulsa', 'data': 'Rp 25.000', 'validity': '+30 Hari', 'details': 'Pulsa Reguler 25.000'},
@@ -188,12 +191,12 @@ def create_general_description(package_key):
     header = create_header(info)
     if info.get('type') == 'Pulsa':
         return (header + f"\n• 💰 <b>Nominal Pulsa:</b> {info.get('data', 'N/A')}\n"
-                         f"• ⏳ <b>Penambahan Masa Aktif:</b> {info.get('validity', 'N/A')}\n"
-                         f"• 📱 <b>Provider:</b> {info.get('category', 'N/A')}")
+                            f"• ⏳ <b>Penambahan Masa Aktif:</b> {info.get('validity', 'N/A')}\n"
+                            f"• 📱 <b>Provider:</b> {info.get('category', 'N/A')}")
     else:
         return (header + f"\n• 💾 <b>Kuota Utama:</b> {info.get('data', 'N/A')}\n"
-                         f"• 📅 <b>Masa Aktif:</b> {info.get('validity', 'N/A')}\n"
-                         f"• 📝 <b>Rincian:</b> {safe_html(info.get('details', 'N/A'))}")
+                            f"• 📅 <b>Masa Aktif:</b> {info.get('validity', 'N/A')}\n"
+                            f"• 📝 <b>Rincian:</b> {safe_html(info.get('details', 'N/A'))}")
 
 def create_akrab_description(package_key):
     info = ALL_PACKAGES_DATA.get(package_key, {})
@@ -204,15 +207,15 @@ def create_akrab_description(package_key):
                     "🌐 <b>Kompatibilitas:</b> XL / AXIS / LIVEON\n" "📅 <b>Masa Aktif:</b> ±28 hari (sesuai ketentuan XL)\n\n")
     if quota_info:
         description += ("💾 <b>Estimasi Total Kuota (berdasarkan zona):</b>\n"
-                        f"  - <b>Area 1:</b> {quota_info.get('1', 'N/A')}\n" f"  - <b>Area 2:</b> {quota_info.get('2', 'N/A')}\n"
-                        f"  - <b>Area 3:</b> {quota_info.get('3', 'N/A')}\n" f"  - <b>Area 4:</b> {quota_info.get('4', 'N/A')}\n\n")
+                        f"  - <b>Area 1:</b> {quota_info.get('1', 'N/A')}\n" f"  - <b>Area 2:</b> {quota_info.get('2', 'N/A')}\n"
+                        f"  - <b>Area 3:</b> {quota_info.get('3', 'N/A')}\n" f"  - <b>Area 4:</b> {quota_info.get('4', 'N/A')}\n\n")
     else:
         description += f"💾 <b>Kuota Utama:</b> {info.get('data', 'N/A')}\n\n"
     description += ("📋 <b>Prosedur & Ketentuan Penting:</b>\n"
-                    "  - Pastikan SIM terpasang di perangkat (HP/Modem) untuk deteksi lokasi BTS dan klaim bonus kuota lokal.\n"
-                    "  - Jika kuota MyRewards belum masuk sepenuhnya, mohon tunggu 1x24 jam sebelum melapor ke Admin.\n\n"
-                    "ℹ️ <b>Informasi Tambahan:</b>\n" "  - <a href='http://bit.ly/area_akrab'>Cek Pembagian Area Kuota Anda</a>\n"
-                    "  - <a href='https://kmsp-store.com/cara-unreg-paket-akrab-yang-benar'>Panduan Unreg Paket Akrab</a>")
+                    "  - Pastikan SIM terpasang di perangkat (HP/Modem) untuk deteksi lokasi BTS dan klaim bonus kuota lokal.\n"
+                    "  - Jika kuota MyRewards belum masuk sepenuhnya, mohon tunggu 1x24 jam sebelum melapor ke Admin.\n\n"
+                    "ℹ️ <b>Informasi Tambahan:</b>\n" "  - <a href='http://bit.ly/area_akrab'>Cek Pembagian Area Kuota Anda</a>\n"
+                    "  - <a href='https://kmsp-store.com/cara-unreg-paket-akrab-yang-benar'>Panduan Unreg Paket Akrab</a>")
     return description
 
 def create_circle_description(package_key):
@@ -222,10 +225,10 @@ def create_circle_description(package_key):
             "📱 <b>Kompatibilitas:</b> Khusus XL Prabayar (Prepaid)\n"
             "⏳ <b>Masa Aktif:</b> 28 hari atau hingga kuota habis. Jika kuota habis sebelum 28 hari, status keanggotaan menjadi <b>BEKU/FREEZE</b>.\n"
             "⚡ <b>Aktivasi:</b> Instan, tanpa OTP.\n\n" "⚠️ <b>PERHATIAN (WAJIB BACA):</b>\n" "<b>1. Cara Cek Kuota:</b>\n"
-            "    - Buka aplikasi <b>MyXL terbaru</b>.\n" "    - Klik menu <b>XL CIRCLE</b> di bagian bawah (bukan dari 'Lihat Paket Saya').\n\n"
-            "<b>2. Syarat & Ketentuan:</b>\n" "    - <b>Umur Kartu:</b> Minimal 60 hari. Cek di <a href='https://sidompul.kmsp-store.com/'>sini</a>.\n"
-            "    - <b>Keanggotaan:</b> Tidak terdaftar di Circle lain pada bulan yang sama.\n" "    - <b>Status Kartu:</b> Tidak dalam masa tenggang.\n"
-            "    - <b>DILARANG UNREG:</b> Keluar dari Circle akan menghanguskan garansi (tanpa refund).")
+            "    - Buka aplikasi <b>MyXL terbaru</b>.\n" "    - Klik menu <b>XL CIRCLE</b> di bagian bawah (bukan dari 'Lihat Paket Saya').\n\n"
+            "<b>2. Syarat & Ketentuan:</b>\n" "    - <b>Umur Kartu:</b> Minimal 60 hari. Cek di <a href='https://sidompul.kmsp-store.com/'>sini</a>.\n"
+            "    - <b>Keanggotaan:</b> Tidak terdaftar di Circle lain pada bulan yang sama.\n" "    - <b>Status Kartu:</b> Tidak dalam masa tenggang.\n"
+            "    - <b>DILARANG UNREG:</b> Keluar dari Circle akan menghanguskan garansi (tanpa refund).")
 
 def create_bebaspuas_description(package_key):
     info = ALL_PACKAGES_DATA.get(package_key, {})
@@ -234,19 +237,19 @@ def create_bebaspuas_description(package_key):
             "📱 <b>Kompatibilitas:</b> Khusus XL Prabayar (Prepaid)\n" "🌍 <b>Area:</b> Berlaku di seluruh Indonesia\n"
             "📅 <b>Masa Aktif & Garansi:</b> 30 Hari\n" f"💾 <b>Kuota Utama:</b> {info.get('data', 'N/A')} (Full 24 Jam)\n\n"
             "⭐ <b>Fitur Unggulan:</b>\n"
-            "  - <b>Akumulasi Kuota:</b> Sisa kuota dan masa aktif akan ditambahkan jika Anda membeli paket Bebas Puas lain sebelum masa aktif berakhir.\n"
-            "  - <b>Tanpa Syarat Pulsa:</b> Aktivasi tidak memerlukan pulsa minimum.\n\n" "🎁 <b>Klaim Bonus:</b>\n"
-            "  - Tersedia bonus kuota yang dapat diklaim di aplikasi myXL (pilih salah satu: YouTube, TikTok, atau Kuota Utama).")
+            "  - <b>Akumulasi Kuota:</b> Sisa kuota dan masa aktif akan ditambahkan jika Anda membeli paket Bebas Puas lain sebelum masa aktif berakhir.\n"
+            "  - <b>Tanpa Syarat Pulsa:</b> Aktivasi tidak memerlukan pulsa minimum.\n\n" "🎁 <b>Klaim Bonus:</b>\n"
+            "  - Tersedia bonus kuota yang dapat diklaim di aplikasi myXL (pilih salah satu: YouTube, TikTok, atau Kuota Utama).")
 
 PAKET_DESCRIPTIONS = {key: create_general_description(key) for key in ALL_PACKAGES_DATA}
 for key in get_products(special_type='Akrab'): PAKET_DESCRIPTIONS[key] = create_akrab_description(key)
 for key in get_products(special_type='Circle'): PAKET_DESCRIPTIONS[key] = create_circle_description(key)
 for key in get_products(special_type='BebasPuas'): PAKET_DESCRIPTIONS[key] = create_bebaspuas_description(key)
 PAKET_DESCRIPTIONS["bantuan"] = ("<b>Pusat Bantuan & Informasi</b> 🆘\n\n"
-                                     "Selamat datang di pusat bantuan Pulsa Net Bot.\n\n"
-                                     "Jika Anda mengalami kendala teknis, memiliki pertanyaan seputar produk, atau tertarik untuk menjadi reseller, jangan ragu untuk menghubungi Admin kami.\n\n"
-                                     "Gunakan perintah /start untuk kembali ke menu utama kapan saja.\n\n"
-                                     "📞 <b>Admin:</b> @hexynos\n" "🌐 <b>Website Resmi:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
+                                   "Selamat datang di pusat bantuan Pulsa Net Bot.\n\n"
+                                   "Jika Anda mengalami kendala teknis, memiliki pertanyaan seputar produk, atau tertarik untuk menjadi reseller, jangan ragu untuk menghubungi Admin kami.\n\n"
+                                   "Gunakan perintah /start untuk kembali ke menu utama kapan saja.\n\n"
+                                   "📞 <b>Admin:</b> @hexynos\n" "🌐 <b>Website Resmi:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
 
 # ==============================================================================
 # FUNGSI-FUNGSI FITUR TOOLS (HELPER FUNCTIONS)
@@ -267,11 +270,11 @@ def get_provider_info_global(phone_number_str: str) -> str:
         country_name = country.name if country else "Tidak Diketahui"
         country_flag = country.flag if hasattr(country, 'flag') else "❓"
         number_type_map = {
-            phonenumberutil.PhoneNumberType.MOBILE: "Ponsel",
-            phonenumberutil.PhoneNumberType.FIXED_LINE: "Telepon Rumah",
-            phonenumberutil.PhoneNumberType.FIXED_LINE_OR_MOBILE: "Ponsel / Telepon Rumah",
-            phonenumberutil.PhoneNumberType.TOLL_FREE: "Bebas Pulsa",
-            phonenumberutil.PhoneNumberType.VOIP: "VoIP",
+            phonenumbers.PhoneNumberType.MOBILE: "Ponsel",
+            phonenumbers.PhoneNumberType.FIXED_LINE: "Telepon Rumah",
+            phonenumbers.PhoneNumberType.FIXED_LINE_OR_MOBILE: "Ponsel / Telepon Rumah",
+            phonenumbers.PhoneNumberType.TOLL_FREE: "Bebas Pulsa",
+            phonenumbers.PhoneNumberType.VOIP: "VoIP",
         }
         number_type = number_type_map.get(phonenumbers.number_type(phone_number), "Lainnya")
         carrier_name = carrier.name_for_number(phone_number, "en") or "Tidak terdeteksi"
@@ -286,7 +289,7 @@ def get_provider_info_global(phone_number_str: str) -> str:
         )
         return output
     except phonenumberutil.NumberParseException:
-        return f"Format nomor <code>{safe_html(phone_number_str)}</code> salah. Harap gunakan format internasional (contoh: +628123...)."
+        return f"Format nomor <code>{safe_html(phone_number_str)}</code> salah. Harap gunakan format internasional (contoh: +628123...). Pengguna disarankan untuk mengirimkan nomor dalam format internasional."
     except Exception as e:
         logger.error(f"Error di get_provider_info_global: {e}")
         return "Terjadi kesalahan saat memproses nomor."
@@ -365,8 +368,17 @@ async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['messages_to_clear'] = []
         
         confirmation_text = (f"✅ <b>Pembersihan Selesai!</b>\n\nBerhasil menghapus <b>{success_count}</b> pesan dari sesi ini.")
-        sent_msg = await context.bot.send_message(chat_id=chat_id, text=confirmation_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-        await track_message(context, sent_msg)
+        
+        # FIX: Wrap edit_message_text in try-except for BadRequest
+        try:
+            sent_msg = await context.bot.send_message(chat_id=chat_id, text=confirmation_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+            await track_message(context, sent_msg)
+        except BadRequest as e:
+            if "Message is not modified" in str(e):
+                logger.info(f"Tried to send confirmation message with identical content in clear_history. Skipping.")
+            else:
+                raise e # Re-raise if it's another BadRequest error
+            
     except Exception as e:
         await send_admin_log(context, e, update, "clear_history")
         try:
@@ -396,9 +408,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Platform terpercaya untuk semua kebutuhan digital Anda.\n\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             "🔑 <b>Informasi Sesi Anda</b>\n"
-            f"  ├─ Username: {username_info}\n"
-            f"  ├─ User ID: <code>{user.id}</code>\n"
-            f"  └─ Chat ID: <code>{chat_id}</code>\n"
+            f"  ├─ Username: {username_info}\n"
+            f"  ├─ User ID: <code>{user.id}</code>\n"
+            f"  └─ Chat ID: <code>{chat_id}</code>\n"
             "━━━━━━━━━━━━━━━━━━━━\n\n"
             "Pilih layanan yang Anda butuhkan dari menu di bawah ini."
         )
@@ -410,8 +422,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🌐 Kunjungi Website Kami", url="https://pulsanet.kesug.com/beli.html")]
         ]
         if update.callback_query:
-            await update.callback_query.edit_message_text(main_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
-            await update.callback_query.answer()
+            # FIX: Wrap edit_message_text in try-except for BadRequest
+            try:
+                await update.callback_query.edit_message_text(main_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+                await update.callback_query.answer()
+            except BadRequest as e:
+                if "Message is not modified" in str(e):
+                    logger.info(f"Tried to edit message {update.callback_query.message.message_id} with identical content in start. Skipping.")
+                    await update.callback_query.answer("Konten tidak berubah.")
+                else:
+                    raise e
         else:
             sent_message = await context.bot.send_message(chat_id=chat_id, text=main_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
             await track_message(context, sent_message)
@@ -424,8 +444,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
 
 async def show_operator_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     try:
-        query = update.callback_query
         await query.answer()
         product_type_key = query.data.split('_')[1]
         product_type_name = "Paket Data" if product_type_key == "paket" else "Pulsa"
@@ -436,27 +456,46 @@ async def show_operator_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
             row = [InlineKeyboardButton(f"{icon} {op}", callback_data=f"list_{product_type_key}_{op.lower()}") for op, icon in op_items[i:i+2]]
             keyboard.append(row)
         keyboard.append([InlineKeyboardButton("⬅️ Kembali ke Menu Utama", callback_data="back_to_start")])
-        await query.edit_message_text(f"Anda memilih kategori <b>{product_type_name}</b>.\nSilakan pilih provider:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        
+        # FIX: Wrap edit_message_text in try-except for BadRequest
+        try:
+            await query.edit_message_text(f"Anda memilih kategori <b>{product_type_name}</b>.\nSilakan pilih provider:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        except BadRequest as e:
+            if "Message is not modified" in str(e):
+                logger.info(f"Tried to edit message {query.message.message_id} with identical content in show_operator_menu. Skipping.")
+                await query.answer("Konten tidak berubah.")
+            else:
+                raise e
     except Exception as e:
         await send_admin_log(context, e, update, "show_operator_menu")
         await query.edit_message_text("Maaf, terjadi kesalahan.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
 
 async def show_xl_paket_submenu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     try:
-        await update.callback_query.answer()
+        await query.answer()
         keyboard = [
             [InlineKeyboardButton("🤝 Akrab", callback_data="list_paket_xl_akrab"), InlineKeyboardButton("🥳 Bebas Puas", callback_data="list_paket_xl_bebaspuas")],
             [InlineKeyboardButton("⭕️ Circle", callback_data="list_paket_xl_circle"), InlineKeyboardButton("🚀 Paket Lainnya", callback_data="list_paket_xl_paket")],
             [InlineKeyboardButton("⬅️ Kembali ke Provider", callback_data="main_paket")]
         ]
-        await update.callback_query.edit_message_text("<b>Pilihan Paket Data XL 🌐</b>\n\nSilakan pilih jenis paket di bawah ini:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        # FIX: Wrap edit_message_text in try-except for BadRequest
+        try:
+            await query.edit_message_text("<b>Pilihan Paket Data XL 🌐</b>\n\nSilakan pilih jenis paket di bawah ini:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        except BadRequest as e:
+            if "Message is not modified" in str(e):
+                logger.info(f"Tried to edit message {query.message.message_id} with identical content in show_xl_paket_submenu. Skipping.")
+                await query.answer("Konten tidak berubah.")
+            else:
+                raise e
     except Exception as e:
         await send_admin_log(context, e, update, "show_xl_paket_submenu")
-        await update.callback_query.edit_message_text("Maaf, terjadi kesalahan.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+        await query.edit_message_text("Maaf, terjadi kesalahan.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
 
 async def show_product_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     try:
-        query, data_parts = update.callback_query, update.callback_query.data.split('_')
+        data_parts = query.data.split('_')
         await query.answer()
         product_type_key, category_key, special_type_key = data_parts[1], data_parts[2], data_parts[3] if len(data_parts) > 3 else None
         titles = {"tri": "Tri 🌐", "axis": "Axis 🌐", "telkomsel": "Telkomsel 🌐", "indosat": "Indosat 🌐", "by.u": "By.U 🌐", "xl": "XL 🌐"}
@@ -469,26 +508,47 @@ async def show_product_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
             products = get_products(category=category_key, product_type=product_type_key)
             product_name = 'Paket Data' if product_type_key == 'paket' else 'Pulsa'
             title = f"<b>{base_title} - {product_name}</b>"
+        
+        back_cb = "list_paket_xl" if category_key == 'xl' and product_type_key == 'paket' else f"main_{product_type_key}"
+
         if not products:
-            back_cb = "list_paket_xl" if category_key == 'xl' and product_type_key == 'paket' else f"main_{product_type_key}"
-            await query.edit_message_text("Mohon maaf, produk untuk kategori ini belum tersedia.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data=back_cb)]]), parse_mode=ParseMode.HTML)
+            # FIX: Wrap edit_message_text in try-except for BadRequest
+            try:
+                await query.edit_message_text("Mohon maaf, produk untuk kategori ini belum tersedia.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data=back_cb)]]), parse_mode=ParseMode.HTML)
+            except BadRequest as e:
+                if "Message is not modified" in str(e):
+                    logger.info(f"Tried to edit message {query.message.message_id} with identical content (no products). Skipping.")
+                    await query.answer("Konten tidak berubah.")
+                else:
+                    raise e
             return
+        
         sorted_keys = sorted(products.keys(), key=lambda k: PRICES.get(k, 0))
         keyboard = []
         for key in sorted_keys:
             short_name = re.sub(r'^(Tri|Axis|XL|Telkomsel|Indosat|By\.U)\s*', '', products[key], flags=re.I).replace('Paket ', '')
             button_text = f"{short_name} - Rp{PRICES.get(key, 0):,}".replace(",", ".")
             keyboard.append([InlineKeyboardButton(button_text, callback_data=key)])
-        back_cb = "list_paket_xl" if category_key == 'xl' and product_type_key == 'paket' else f"main_{product_type_key}"
+        
         keyboard.append([InlineKeyboardButton("⬅️ Kembali", callback_data=back_cb)])
-        await query.edit_message_text(f"{title}\n\nSilakan pilih produk yang Anda inginkan:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        
+        # FIX: Wrap edit_message_text in try-except for BadRequest
+        try:
+            await query.edit_message_text(f"{title}\n\nSilakan pilih produk yang Anda inginkan:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        except BadRequest as e:
+            if "Message is not modified" in str(e):
+                logger.info(f"Tried to edit message {query.message.message_id} with identical content in show_product_list. Skipping.")
+                await query.answer("Konten tidak berubah.")
+            else:
+                raise e
     except Exception as e:
         await send_admin_log(context, e, update, "show_product_list")
-        await update.callback_query.edit_message_text("Maaf, terjadi kesalahan.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+        await query.edit_message_text("Maaf, terjadi kesalahan.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
 
 async def show_package_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     try:
-        query, package_key = update.callback_query, update.callback_query.data
+        package_key = query.data
         await query.answer()
         info = ALL_PACKAGES_DATA.get(package_key, {})
         category, p_type = info.get('category', '').lower(), info.get('type', '').lower()
@@ -500,23 +560,40 @@ async def show_package_details(update: Update, context: ContextTypes.DEFAULT_TYP
         keyboard = [[InlineKeyboardButton("🛒 Beli Sekarang (Website)", url="https://pulsanet.kesug.com/beli.html")],
                     [InlineKeyboardButton("⬅️ Kembali ke Daftar", callback_data=back_data)],
                     [InlineKeyboardButton("🏠 Menu Utama", callback_data="back_to_start")]]
-        await query.edit_message_text(PAKET_DESCRIPTIONS.get(package_key, "Informasi produk tidak ditemukan."), reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        
+        # FIX: Wrap edit_message_text in try-except for BadRequest
+        try:
+            await query.edit_message_text(PAKET_DESCRIPTIONS.get(package_key, "Informasi produk tidak ditemukan."), reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        except BadRequest as e:
+            if "Message is not modified" in str(e):
+                logger.info(f"Tried to edit message {query.message.message_id} with identical content in show_package_details. Skipping.")
+                await query.answer("Konten tidak berubah.")
+            else:
+                raise e
     except Exception as e:
         await send_admin_log(context, e, update, "show_package_details")
-        await update.callback_query.edit_message_text("Maaf, terjadi kesalahan.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+        await query.edit_message_text("Maaf, terjadi kesalahan.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
 
 async def show_bantuan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     try:
-        query = update.callback_query
         await query.answer()
-        await query.edit_message_text(PAKET_DESCRIPTIONS["bantuan"], reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        # FIX: Wrap edit_message_text in try-except for BadRequest
+        try:
+            await query.edit_message_text(PAKET_DESCRIPTIONS["bantuan"], reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        except BadRequest as e:
+            if "Message is not modified" in str(e):
+                logger.info(f"Tried to edit message {query.message.message_id} with identical content in show_bantuan. Skipping.")
+                await query.answer("Konten tidak berubah.")
+            else:
+                raise e
     except Exception as e:
         await send_admin_log(context, e, update, "show_bantuan")
         await query.edit_message_text("Maaf, terjadi kesalahan.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
 
 async def show_tools_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     try:
-        query = update.callback_query
         await query.answer()
         text = "<b>🛠️ Tools & Hiburan</b>\n\nPilih salah satu alat atau hiburan yang tersedia di bawah ini."
         keyboard = [
@@ -524,14 +601,22 @@ async def show_tools_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("▶️ YouTube Downloader", callback_data="ask_for_youtube"), InlineKeyboardButton("🎮 Mini Game", callback_data="main_game")],
             [InlineKeyboardButton("⬅️ Kembali ke Menu Utama", callback_data="back_to_start")]
         ]
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        # FIX: Wrap edit_message_text in try-except for BadRequest
+        try:
+            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        except BadRequest as e:
+            if "Message is not modified" in str(e):
+                logger.info(f"Tried to edit message {query.message.message_id} with identical content in show_tools_menu. Skipping.")
+                await query.answer("Konten tidak berubah.")
+            else:
+                raise e
     except Exception as e:
         await send_admin_log(context, e, update, "show_tools_menu")
         await query.edit_message_text("Maaf, terjadi kesalahan.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
 
 async def prompt_for_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     try:
-        query = update.callback_query
         await query.answer()
         action = query.data
         text = ""
@@ -558,14 +643,31 @@ async def prompt_for_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "• <code>100 USD to IDR</code>\n"
                     "• <code>50 EUR JPY</code>\n"
                     "• <code>1000000 IDR MYR</code>")
-        else: 
+        else:  
             return
             
         keyboard = [[InlineKeyboardButton("⬅️ Batal & Kembali", callback_data=back_button_callback)]]
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        
+        # FIX: Wrap edit_message_text in try-except for BadRequest
+        try:
+            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        except BadRequest as e:
+            if "Message is not modified" in str(e):
+                logger.info(f"Tried to edit message {query.message.message_id} with identical content in prompt_for_action. Skipping.")
+                await query.answer("Konten tidak berubah.")
+            else:
+                raise e
     except Exception as e:
         await send_admin_log(context, e, update, "prompt_for_action")
-        await query.edit_message_text("Maaf, terjadi kesalahan.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+        # FIX: Also wrap the error message edit in try-except
+        try:
+            await query.edit_message_text("Maaf, terjadi kesalahan.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+        except BadRequest as e_inner:
+            if "Message is not modified" in str(e_inner):
+                logger.info(f"Tried to edit message {query.message.message_id} to identical error message in prompt_for_action error handler. Skipping.")
+            else:
+                logger.error(f"Failed to send error message in prompt_for_action error handler: {e_inner}")
+
 
 async def handle_currency_conversion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     status_msg = None
@@ -576,7 +678,14 @@ async def handle_currency_conversion(update: Update, context: ContextTypes.DEFAU
         text = update.message.text.upper()
         match = re.match(r"([\d\.\,]+)\s*([A-Z]{3})\s*(?:TO|IN|)\s*([A-Z]{3})", text)
         if not match:
-            await status_msg.edit_text("Format salah. Contoh: <code>100 USD to IDR</code>.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+            # FIX: Wrap edit_text in try-except for BadRequest
+            try:
+                await status_msg.edit_text("Format salah. Contoh: <code>100 USD to IDR</code>.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+            except BadRequest as e:
+                if "Message is not modified" in str(e):
+                    logger.info(f"Tried to edit status_msg {status_msg.message_id} with identical content (bad format). Skipping.")
+                else:
+                    raise e
             return
         amount_str, base_curr, target_curr = match.groups()
         amount = float(amount_str.replace(",", ""))
@@ -602,17 +711,45 @@ async def handle_currency_conversion(update: Update, context: ContextTypes.DEFAU
                 f"<i>Kurs 1 {base_curr} = {rate:,.2f} {target_curr}</i>\n"
                 f"<a href='https://www.google.com/finance/quote/{base_curr}-{target_curr}'>Sumber data real-time</a>"
             )
-            await status_msg.edit_text(result_text, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+            # FIX: Wrap edit_text in try-except for BadRequest
+            try:
+                await status_msg.edit_text(result_text, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+            except BadRequest as e:
+                if "Message is not modified" in str(e):
+                    logger.info(f"Tried to edit status_msg {status_msg.message_id} with identical content (conversion result). Skipping.")
+                else:
+                    raise e
         else:
-            await status_msg.edit_text(f"Tidak dapat menemukan kurs untuk <b>{target_curr}</b>.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+            # FIX: Wrap edit_text in try-except for BadRequest
+            try:
+                await status_msg.edit_text(f"Tidak dapat menemukan kurs untuk <b>{target_curr}</b>.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+            except BadRequest as e:
+                if "Message is not modified" in str(e):
+                    logger.info(f"Tried to edit status_msg {status_msg.message_id} with identical content (currency not found). Skipping.")
+                else:
+                    raise e
     except httpx.RequestError as e:
         await send_admin_log(context, e, update, "handle_currency_conversion (RequestError)")
         if status_msg:
-            await status_msg.edit_text("Gagal menghubungi layanan kurs. Coba lagi nanti.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+            # FIX: Wrap edit_text in try-except for BadRequest
+            try:
+                await status_msg.edit_text("Gagal menghubungi layanan kurs. Coba lagi nanti.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+            except BadRequest as e_inner:
+                if "Message is not modified" in str(e_inner):
+                    logger.info(f"Tried to edit status_msg {status_msg.message_id} to identical error message. Skipping.")
+                else:
+                    logger.error(f"Failed to send error message in handle_currency_conversion error handler: {e_inner}")
     except Exception as e:
         await send_admin_log(context, e, update, "handle_currency_conversion")
         if status_msg:
-            await status_msg.edit_text("Maaf, terjadi kesalahan teknis. Tim kami sudah diberitahu.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+            # FIX: Wrap edit_text in try-except for BadRequest
+            try:
+                await status_msg.edit_text("Maaf, terjadi kesalahan teknis. Tim kami sudah diberitahu.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+            except BadRequest as e_inner:
+                if "Message is not modified" in str(e_inner):
+                    logger.info(f"Tried to edit status_msg {status_msg.message_id} to identical technical error message. Skipping.")
+                else:
+                    logger.error(f"Failed to send error message in handle_currency_conversion error handler: {e_inner}")
 
 async def show_youtube_quality_options(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str):
     """Gets video info in a separate thread and shows quality options."""
@@ -623,7 +760,7 @@ async def show_youtube_quality_options(update: Update, context: ContextTypes.DEF
         
         ydl_opts = {
             'quiet': True, 'no_warnings': True, 'noplaylist': True,
-            'cookiefile': 'youtube_cookies.txt', 
+            'cookiefile': 'youtube_cookies.txt',  
             'rm_cachedir': True,
             'retries': 3, 'fragment_retries': 3,
             'http_headers': {'User-Agent': CHROME_USER_AGENT},
@@ -645,19 +782,34 @@ async def show_youtube_quality_options(update: Update, context: ContextTypes.DEF
              keyboard.append([InlineKeyboardButton(label, callback_data=f"yt_dl|{video_id}|{f['format_id']}")])
         
         audio_formats = sorted([f for f in formats if f.get('acodec') != 'none' and f.get('vcodec') == 'none'], 
-                              key=lambda x: x.get('filesize') or x.get('filesize_approx') or 0, reverse=True)
+                                 key=lambda x: x.get('filesize') or x.get('filesize_approx') or 0, reverse=True)
         if audio_formats:
             best_audio = audio_formats[0]
             label = f"🎵 Audio [{best_audio.get('ext', 'audio')}] ({format_bytes(best_audio.get('filesize') or best_audio.get('filesize_approx'))})"
             keyboard.append([InlineKeyboardButton(label, callback_data=f"yt_dl|{video_id}|{best_audio['format_id']}")])
         
         if not keyboard:
-            await status_msg.edit_text("Tidak ditemukan format yang cocok untuk diunduh.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+            # FIX: Wrap edit_text in try-except for BadRequest
+            try:
+                await status_msg.edit_text("Tidak ditemukan format yang cocok untuk diunduh.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+            except BadRequest as e:
+                if "Message is not modified" in str(e):
+                    logger.info(f"Tried to edit status_msg {status_msg.message_id} with identical content (no suitable formats). Skipping.")
+                else:
+                    raise e
             return
         
         keyboard.append([InlineKeyboardButton("⬅️ Batal", callback_data="main_tools")])
-        await status_msg.edit_text(f"<b>{safe_html(title)}</b>\n\nPilih kualitas yang ingin Anda unduh:", 
-                                   reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        # FIX: Wrap edit_text in try-except for BadRequest
+        try:
+            await status_msg.edit_text(f"<b>{safe_html(title)}</b>\n\nPilih kualitas yang ingin Anda unduh:", 
+                                       reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        except BadRequest as e:
+            if "Message is not modified" in str(e):
+                logger.info(f"Tried to edit status_msg {status_msg.message_id} with identical content (quality options). Skipping.")
+                await query.answer("Konten tidak berubah.") # Also answer the query for the user click
+            else:
+                raise e
     except yt_dlp.utils.DownloadError as e:
         error_str = str(e).lower()
         if 'sign in to confirm' in error_str or 'no suitable proxies' in error_str or '410 gone' in error_str:
@@ -673,11 +825,25 @@ async def show_youtube_quality_options(update: Update, context: ContextTypes.DEF
             reply_text = "Maaf, terjadi kesalahan saat memproses link video (mungkin video dilindungi hak cipta atau dibatasi)."
         
         if status_msg:
-            await status_msg.edit_text(reply_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+            # FIX: Wrap edit_text in try-except for BadRequest
+            try:
+                await status_msg.edit_text(reply_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+            except BadRequest as e_inner:
+                if "Message is not modified" in str(e_inner):
+                    logger.info(f"Tried to edit status_msg {status_msg.message_id} to identical error message. Skipping.")
+                else:
+                    logger.error(f"Failed to send error message in show_youtube_quality_options error handler: {e_inner}")
     except Exception as e:
         await send_admin_log(context, e, update, "show_youtube_quality_options")
         if status_msg:
-            await status_msg.edit_text("Maaf, terjadi kesalahan teknis. Tim kami sudah diberitahu.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+            # FIX: Wrap edit_text in try-except for BadRequest
+            try:
+                await status_msg.edit_text("Maaf, terjadi kesalahan teknis. Tim kami sudah diberitahu.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+            except BadRequest as e_inner:
+                if "Message is not modified" in str(e_inner):
+                    logger.info(f"Tried to edit status_msg {status_msg.message_id} to identical technical error message. Skipping.")
+                else:
+                    logger.error(f"Failed to send error message in show_youtube_quality_options error handler: {e_inner}")
 
 async def handle_youtube_download_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -686,7 +852,15 @@ async def handle_youtube_download_choice(update: Update, context: ContextTypes.D
     
     try:
         await query.answer("Memulai proses unduh...")
-        status_msg = await query.edit_message_text(f"📥 <b>Mengunduh...</b>\n\n<i>Ini mungkin akan memakan waktu.</i>", parse_mode=ParseMode.HTML)
+        # FIX: Wrap edit_message_text in try-except for BadRequest
+        try:
+            status_msg = await query.edit_message_text(f"📥 <b>Mengunduh...</b>\n\n<i>Ini mungkin akan memakan waktu.</i>", parse_mode=ParseMode.HTML)
+        except BadRequest as e:
+            if "Message is not modified" in str(e):
+                logger.info(f"Tried to edit message {query.message.message_id} with identical content (downloading...). Skipping.")
+                status_msg = query.message # Reuse the existing message
+            else:
+                raise e
         
         _, video_id, format_id = query.data.split('|')
         url = f"https://www.youtube.com/watch?v={video_id}"
@@ -710,9 +884,17 @@ async def handle_youtube_download_choice(update: Update, context: ContextTypes.D
         if not os.path.exists(file_path): 
             raise ValueError("File tidak ditemukan setelah unduh.")
         
-        await status_msg.edit_text("📤 <b>Mengirim file...</b>", parse_mode=ParseMode.HTML)
+        # FIX: Wrap edit_text in try-except for BadRequest
+        try:
+            await status_msg.edit_text("📤 <b>Mengirim file...</b>", parse_mode=ParseMode.HTML)
+        except BadRequest as e:
+            if "Message is not modified" in str(e):
+                logger.info(f"Tried to edit status_msg {status_msg.message_id} with identical content (sending file...). Skipping.")
+            else:
+                raise e
+
         is_video = any('📹' in btn.text for row in query.message.reply_markup.inline_keyboard 
-                      for btn in row if hasattr(btn, 'callback_data') and btn.callback_data == query.data)
+                       for btn in row if hasattr(btn, 'callback_data') and btn.callback_data == query.data)
         action = ChatAction.UPLOAD_VIDEO if is_video else ChatAction.UPLOAD_AUDIO
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=action)
         
@@ -720,12 +902,18 @@ async def handle_youtube_download_choice(update: Update, context: ContextTypes.D
         with open(file_path, 'rb') as f:
             if is_video:
                 sent_file = await context.bot.send_video(update.effective_chat.id, video=f, caption=caption, 
-                                                        parse_mode=ParseMode.HTML, read_timeout=120, write_timeout=120)
+                                                         parse_mode=ParseMode.HTML, read_timeout=120, write_timeout=120)
             else:
                 sent_file = await context.bot.send_audio(update.effective_chat.id, audio=f, caption=caption, 
-                                                        parse_mode=ParseMode.HTML, read_timeout=120, write_timeout=120)
+                                                         parse_mode=ParseMode.HTML, read_timeout=120, write_timeout=120)
         await track_message(context, sent_file)
-        await status_msg.delete()
+        
+        # FIX: Delete status_msg gracefully, might have been already deleted or edited.
+        try:
+            await status_msg.delete()
+        except TelegramError as e:
+            logger.info(f"Failed to delete status message {status_msg.message_id} in youtube_download: {e}")
+
 
         keyboard_next_action = InlineKeyboardMarkup([
             [InlineKeyboardButton("▶️ Unduh Video Lain", callback_data="ask_for_youtube")],
@@ -752,11 +940,25 @@ async def handle_youtube_download_choice(update: Update, context: ContextTypes.D
             reply_text = "Maaf, terjadi kesalahan saat mengunduh file."
         
         if status_msg:
-            await status_msg.edit_text(reply_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+            # FIX: Wrap edit_text in try-except for BadRequest
+            try:
+                await status_msg.edit_text(reply_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+            except BadRequest as e_inner:
+                if "Message is not modified" in str(e_inner):
+                    logger.info(f"Tried to edit status_msg {status_msg.message_id} to identical error message. Skipping.")
+                else:
+                    logger.error(f"Failed to send error message in handle_youtube_download_choice error handler: {e_inner}")
     except Exception as e:
         await send_admin_log(context, e, update, "handle_youtube_download_choice")
         if status_msg:
-            await status_msg.edit_text("Maaf, terjadi kesalahan teknis. Tim kami sudah diberitahu.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+            # FIX: Wrap edit_text in try-except for BadRequest
+            try:
+                await status_msg.edit_text("Maaf, terjadi kesalahan teknis. Tim kami sudah diberitahu.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+            except BadRequest as e_inner:
+                if "Message is not modified" in str(e_inner):
+                    logger.info(f"Tried to edit status_msg {status_msg.message_id} to identical technical error message. Skipping.")
+                else:
+                    logger.error(f"Failed to send error message in handle_youtube_download_choice error handler: {e_inner}")
     finally:
         if file_path and os.path.exists(file_path):
             try:
@@ -781,10 +983,8 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             
             if numbers:
                 responses = [get_provider_info_global(num.replace(" ", "").replace("-", "")) for num in numbers]
-                final_text = "\n\n---\n\n".join(responses)
-                sent_msg = await update.message.reply_text(final_text, reply_markup=keyboard_next_action, parse_mode=ParseMode.HTML)
+                sent_msg = await update.message.reply_text("\n\n---\n\n".join(responses), reply_markup=keyboard_next_action, parse_mode=ParseMode.HTML)
             else:
-                # FIX: Use keyboard_next_action for invalid input too, so navigation persists.
                 sent_msg = await update.message.reply_text(
                     "Format nomor telepon tidak valid. Gunakan format internasional: `+kode_negara nomor`.", 
                     reply_markup=keyboard_next_action, # Menggunakan keyboard_next_action di sini
@@ -806,17 +1006,30 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 img.save(bio, 'PNG')
                 bio.seek(0)
                 caption_text = f"✅ <b>QR Code Berhasil Dibuat!</b>\n\n<b>Data Asli:</b> <code>{safe_html(message_text)}</code>"
-                if formatted_text != message_text: 
+                if formatted_text != message_text:  
                     caption_text += f"\n<b>Format Aksi:</b> <code>{safe_html(formatted_text)}</code>"
                 sent_photo = await update.message.reply_photo(photo=bio, caption=caption_text, parse_mode=ParseMode.HTML)
                 await track_message(context, sent_photo)
-                await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=loading_msg.message_id)
+                
+                # FIX: Delete loading_msg gracefully
+                try:
+                    await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=loading_msg.message_id)
+                except TelegramError as e:
+                    logger.info(f"Failed to delete loading message {loading_msg.message_id} in handle_text_message (QR): {e}")
+
             except Exception as e:
                 await send_admin_log(context, e, update, "handle_text_message (QR Code)")
-                await loading_msg.edit_text("Maaf, terjadi kesalahan saat membuat QR Code.", reply_markup=keyboard_error_back)
+                # FIX: Wrap edit_text in try-except for BadRequest
+                try:
+                    await loading_msg.edit_text("Maaf, terjadi kesalahan saat membuat QR Code.", reply_markup=keyboard_error_back)
+                except BadRequest as e_inner:
+                    if "Message is not modified" in str(e_inner):
+                        logger.info(f"Tried to edit loading_msg {loading_msg.message_id} to identical error message. Skipping.")
+                    else:
+                        logger.error(f"Failed to send error message in handle_text_message (QR) error handler: {e_inner}")
             context.user_data.pop('state', None)
             keyboard = [[InlineKeyboardButton("🖼️ Buat QR Lain", callback_data="ask_for_qr")], 
-                       [InlineKeyboardButton("⬅️ Kembali ke Tools", callback_data="main_tools")]]
+                        [InlineKeyboardButton("⬅️ Kembali ke Tools", callback_data="main_tools")]]
             sent_msg2 = await update.message.reply_text("Apa yang ingin Anda lakukan selanjutnya?", reply_markup=InlineKeyboardMarkup(keyboard))
             await track_message(context, sent_msg2)
             return
@@ -834,7 +1047,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             await handle_currency_conversion(update, context)
             context.user_data.pop('state', None)
             keyboard = [[InlineKeyboardButton("💹 Hitung Kurs Lain", callback_data="ask_for_currency")], 
-                       [InlineKeyboardButton("🏠 Menu Utama", callback_data="back_to_start")]]
+                        [InlineKeyboardButton("🏠 Menu Utama", callback_data="back_to_start")]]
             sent_msg2 = await update.message.reply_text("Apa yang ingin Anda lakukan selanjutnya?", reply_markup=InlineKeyboardMarkup(keyboard))
             await track_message(context, sent_msg2)
             return
@@ -863,41 +1076,57 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         await track_message(context, error_msg)
 
 async def show_game_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     try:
-        query = update.callback_query
         await query.answer()
         keyboard = [[InlineKeyboardButton("Batu 🗿", callback_data="game_play_rock"),
                      InlineKeyboardButton("Gunting ✂️", callback_data="game_play_scissors"),
                      InlineKeyboardButton("Kertas 📄", callback_data="game_play_paper")],
                     [InlineKeyboardButton("⬅️ Kembali ke Menu Tools", callback_data="main_tools")]]
-        await query.edit_message_text("<b>🎮 Game Batu-Gunting-Kertas</b>\n\nAyo bermain! Pilih jagoanmu:",
-                                          reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        # FIX: Wrap edit_message_text in try-except for BadRequest
+        try:
+            await query.edit_message_text("<b>🎮 Game Batu-Gunting-Kertas</b>\n\nAyo bermain! Pilih jagoanmu:",
+                                            reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        except BadRequest as e:
+            if "Message is not modified" in str(e):
+                logger.info(f"Tried to edit message {query.message.message_id} with identical content in show_game_menu. Skipping.")
+                await query.answer("Konten tidak berubah.")
+            else:
+                raise e
     except Exception as e:
         await send_admin_log(context, e, update, "show_game_menu")
         await query.edit_message_text("Maaf, terjadi kesalahan.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
 
 async def play_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     try:
-        query = update.callback_query
         await query.answer()
         user_choice = query.data.split('_')[2]
         choices = ['rock', 'scissors', 'paper']
         bot_choice = random.choice(choices)
         emoji = {'rock': '🗿', 'scissors': '✂️', 'paper': '📄'}
         result_text = ""
-        if user_choice == bot_choice: 
+        if user_choice == bot_choice:  
             result_text = "<b>Hasilnya Seri!</b> 🤝"
         elif (user_choice == 'rock' and bot_choice == 'scissors') or \
              (user_choice == 'scissors' and bot_choice == 'paper') or \
              (user_choice == 'paper' and bot_choice == 'rock'):
             result_text = "<b>Kamu Menang!</b> 🎉"
-        else: 
+        else:  
             result_text = "<b>Kamu Kalah!</b> 🦾"
         text = (f"Pilihanmu: {user_choice.capitalize()} {emoji[user_choice]}\n"
                 f"Pilihan Bot: {bot_choice.capitalize()} {emoji[bot_choice]}\n\n{result_text}")
         keyboard = [[InlineKeyboardButton("🔄 Main Lagi", callback_data="main_game")],
                     [InlineKeyboardButton("🏠 Kembali ke Menu Utama", callback_data="back_to_start")]]
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        # FIX: Wrap edit_message_text in try-except for BadRequest
+        try:
+            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        except BadRequest as e:
+            if "Message is not modified" in str(e):
+                logger.info(f"Tried to edit message {query.message.message_id} with identical content in play_game. Skipping.")
+                await query.answer("Konten tidak berubah.")
+            else:
+                raise e
     except Exception as e:
         await send_admin_log(context, e, update, "play_game")
         await query.edit_message_text("Maaf, terjadi kesalahan pada game.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
@@ -932,9 +1161,10 @@ def main():
 
     print("🤖 Bot Pulsa Net (v16.2 - Perbaikan Navigasi Cek Nomor) sedang berjalan...")
     print("✅ Perbaikan:")
-    print("   - Memperbaiki hilangnya tombol navigasi 'Cek Nomor Lain' pada fitur cek nomor.")
-    print("   - Memastikan tombol navigasi konsisten untuk input valid maupun tidak valid.")
-    print("   - Bot sekarang akan tetap dalam mode 'Cek Info Nomor' hingga pengguna memilih keluar.")
+    print("   - Memperbaiki hilangnya tombol navigasi 'Cek Nomor Lain' pada fitur cek nomor.")
+    print("   - Memastikan tombol navigasi konsisten untuk input valid maupun tidak valid.")
+    print("   - Bot sekarang akan tetap dalam mode 'Cek Info Nomor' hingga pengguna memilih keluar.")
+    print("    - Menambahkan penanganan error 'Message is not modified' untuk meningkatkan stabilitas.")
     
     app.run_polling()
 
