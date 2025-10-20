@@ -2,12 +2,15 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
 # Developer: frd009
-# Versi: 16.1 (NameError Fix & Code Restructure)
+# Versi: 16.2 (Perbaikan Navigasi Cek Nomor)
 #
-# CHANGELOG v16.1:
-# - FIX: Resolved a critical NameError where 'get_provider_info_global' was not defined.
-# - RESTRUCTURE: Moved all tool-related helper functions to a dedicated section before the main bot handlers to ensure they are always defined before being called. This improves code organization and prevents future NameErrors.
-# - All previous features and fixes from v16.0 are retained.
+# CHANGELOG v16.2:
+# - FIX: Mengatasi masalah hilangnya tombol navigasi 'Cek Nomor Lain' setelah pengecekan nomor pertama.
+#   Sekarang, bot akan mempertahankan status 'awaiting_number' dan selalu menampilkan 'Cek Nomor Lain'
+#   atau 'Kembali ke Menu Utama' setelah setiap pengecekan nomor.
+# - FIX: Memastikan keyboard 'Cek Nomor Lain' juga ditampilkan untuk input nomor yang tidak valid,
+#   memberikan konsistensi navigasi.
+# - RESTRUCTURE: Semua fitur dan perbaikan dari v16.1 (NameError Fix & Code Restructure) tetap dipertahankan.
 # ============================================
 
 import os
@@ -375,7 +378,7 @@ async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         chat_id = update.effective_chat.id
-        context.user_data.pop('state', None)
+        context.user_data.pop('state', None) # Always clear state on /start or back_to_start
         if update.message and update.message.text == '/start':
             await track_message(context, update.message)
         user = update.effective_user
@@ -532,21 +535,20 @@ async def prompt_for_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
         action = query.data
         text = ""
-        back_button_callback = "back_to_start"
+        back_button_callback = "main_tools" # Default back to tools for specific actions
 
         if action == "ask_for_number":
             context.user_data['state'] = 'awaiting_number'
             text = ("<b>🔍 Cek Info Nomor Telepon (Global)</b>\n\n"
                     "Silakan kirimkan nomor HP yang ingin Anda periksa, <b>wajib</b> dengan format internasional.\n\n"
                     "Contoh: <code>+6281234567890</code> (Indonesia), <code>+12025550139</code> (USA).")
+            back_button_callback = "back_to_start" # Back to start for initial prompt
         elif action == "ask_for_qr":
             context.user_data['state'] = 'awaiting_qr_text'
             text = ("<b>🖼️ Generator QR Code</b>\n\nKirimkan teks, tautan, atau nomor HP yang ingin Anda jadikan QR Code.")
-            back_button_callback = "main_tools"
         elif action == "ask_for_youtube":
             context.user_data['state'] = 'awaiting_youtube_link'
             text = ("<b>▶️ YouTube Downloader</b>\n\nKirimkan link video YouTube yang ingin Anda unduh.")
-            back_button_callback = "main_tools"
         elif action == "ask_for_currency":
             context.user_data['state'] = 'awaiting_currency'
             text = ("<b>💹 Kalkulator Kurs Mata Uang</b>\n\n"
@@ -556,7 +558,6 @@ async def prompt_for_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "• <code>100 USD to IDR</code>\n"
                     "• <code>50 EUR JPY</code>\n"
                     "• <code>1000000 IDR MYR</code>")
-            back_button_callback = "main_tools"
         else: 
             return
             
@@ -783,13 +784,15 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 final_text = "\n\n---\n\n".join(responses)
                 sent_msg = await update.message.reply_text(final_text, reply_markup=keyboard_next_action, parse_mode=ParseMode.HTML)
             else:
+                # FIX: Use keyboard_next_action for invalid input too, so navigation persists.
                 sent_msg = await update.message.reply_text(
                     "Format nomor telepon tidak valid. Gunakan format internasional: `+kode_negara nomor`.", 
-                    reply_markup=keyboard_error_back,
+                    reply_markup=keyboard_next_action, # Menggunakan keyboard_next_action di sini
                     parse_mode=ParseMode.HTML
                 )
             await track_message(context, sent_msg)
-            context.user_data.pop('state', None)
+            # FIX: Do NOT pop the state here. Keep it in 'awaiting_number' until user explicitly exits.
+            # context.user_data.pop('state', None) 
             return
 
         elif state == 'awaiting_qr_text':
@@ -836,6 +839,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             await track_message(context, sent_msg2)
             return
 
+        # General phone number detection if no specific state is active
         numbers = re.findall(phone_pattern, message_text)
         if numbers and len(numbers) <= 3:
             responses = [get_provider_info_global(num.replace(" ", "").replace("-", "")) for num in numbers]
@@ -846,6 +850,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             await track_message(context, sent_msg)
         else:
+            # No specific state, no general phone number detected (or too many numbers)
             pass
             
     except Exception as e:
@@ -925,10 +930,11 @@ def main():
     app.add_handler(CallbackQueryHandler(play_game, pattern=r'^game_play_(rock|scissors|paper)$'))
     app.add_handler(CallbackQueryHandler(handle_youtube_download_choice, pattern=r'^yt_dl\|.+'))
 
-    print("🤖 Bot Pulsa Net (v16.1 - NameError Fix) sedang berjalan...")
+    print("🤖 Bot Pulsa Net (v16.2 - Perbaikan Navigasi Cek Nomor) sedang berjalan...")
     print("✅ Perbaikan:")
-    print("   - Memperbaiki NameError kritis pada fitur Cek Info Nomor.")
-    print("   - Merestrukturisasi kode untuk ketahanan dan keterbacaan yang lebih baik.")
+    print("   - Memperbaiki hilangnya tombol navigasi 'Cek Nomor Lain' pada fitur cek nomor.")
+    print("   - Memastikan tombol navigasi konsisten untuk input valid maupun tidak valid.")
+    print("   - Bot sekarang akan tetap dalam mode 'Cek Info Nomor' hingga pengguna memilih keluar.")
     
     app.run_polling()
 
