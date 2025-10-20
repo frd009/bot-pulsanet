@@ -1,0 +1,9 @@
+Abaikan folder virtual environment lokal
+
+venv
+pycache
+
+Abaikan file dan folder Git
+
+.git
+.gitignore
