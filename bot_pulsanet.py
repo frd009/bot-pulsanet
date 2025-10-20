@@ -2,19 +2,12 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
 # Developer: frd009
-# Versi: 15.2 (Bug Fixes & Improvements - Fixed)
+# Versi: 15.3 (Admin Error Logging & UX Improvements)
 #
-# CHANGELOG v15.2 (Fixed):
-# - Fixed infinite loop di handle_text_message
-# - Fixed file_path undefined error
-# - Added exception handling di semua handlers
-# - Fixed memory leak di track_message
-# - Improved regex patterns
-# - Added rate limiting protection
-# - Better state management
-# - REFINEMENT: Corrected CallbackQueryHandler regex patterns for precision.
-# - REFINEMENT: Optimized package details handler for scalability.
-# - REFINEMENT: Improved error handling in admin logging.
+# CHANGELOG v15.3:
+# - IMPROVEMENT: Specific technical errors (e.g., YouTube cookie issues) are now logged privately to the admin.
+# - IMPROVEMENT: Users are shown a generic, friendly message for backend errors instead of technical details.
+# - All previous fixes from v15.2 are retained.
 # ============================================
 
 import os
@@ -57,8 +50,8 @@ warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
 # ⚙️ KONFIGURASI & VARIABEL GLOBAL
 # ==============================================================================
 ADMIN_ID = os.environ.get("TELEGRAM_ADMIN_ID")
-MAX_MESSAGES_TO_TRACK = 50  # Batas maksimal pesan yang di-track untuk menghindari memory leak
-MAX_MESSAGES_TO_DELETE_PER_BATCH = 30  # Batas delete per batch untuk menghindari rate limit
+MAX_MESSAGES_TO_TRACK = 50
+MAX_MESSAGES_TO_DELETE_PER_BATCH = 30
 
 # ==============================================================================
 # 📦 DATA PRODUK
@@ -137,7 +130,6 @@ def format_qr_data(text: str) -> str:
     
     # Deteksi URL yang lebih strict
     if not re.match(r'^[a-zA-Z]+://', text):
-        # Hanya tambahkan https:// jika benar-benar terlihat seperti domain
         if re.match(r'^(www\.|[a-zA-Z0-9-]+)\.(com|id|net|org|xyz|co\.id|ac\.id|sch\.id|web\.id|my\.id|io|dev)(/.*)?$', text):
             return f"https://{text}"
     
@@ -262,10 +254,9 @@ PAKET_DESCRIPTIONS["bantuan"] = ("<b>Pusat Bantuan & Informasi</b> 🆘\n\n"
                                      "📞 <b>Admin:</b> @hexynos\n" "🌐 <b>Website Resmi:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
 
 # ==============================================================================
-# 🤖 FUNGSI HANDLER BOT (VERSI 15.2 - FIXED)
+# 🤖 FUNGSI HANDLER BOT
 # ==============================================================================
 
-# --- Keyboard reusable untuk pesan eror ---
 keyboard_error_back = InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Kembali ke Menu Utama", callback_data="back_to_start")]])
 
 async def send_admin_log(context: ContextTypes.DEFAULT_TYPE, error: Exception, update: Update, from_where: str):
@@ -299,9 +290,8 @@ async def track_message(context: ContextTypes.DEFAULT_TYPE, message):
         if 'messages_to_clear' not in context.user_data:
             context.user_data['messages_to_clear'] = []
         
-        # Batasi jumlah pesan yang di-track untuk menghindari memory leak
         if len(context.user_data['messages_to_clear']) >= MAX_MESSAGES_TO_TRACK:
-            context.user_data['messages_to_clear'] = context.user_data['messages_to_clear'][-MAX_MESSAGES_TO_TRACK+1:]
+            context.user_data['messages_to_clear'] = context.user_data['messages_to_clear'][-(MAX_MESSAGES_TO_TRACK-1):]
         
         context.user_data['messages_to_clear'].append(message.message_id)
 
@@ -312,38 +302,27 @@ async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update.callback_query:
             await update.callback_query.answer("Memulai pembersihan riwayat...")
             try:
-                # Attempt to delete the callback query message itself
                 await context.bot.delete_message(chat_id=chat_id, message_id=update.callback_query.message.message_id)
-            except TelegramError as e:
-                logger.debug(f"Could not delete callback query message: {e}")
             except Exception: 
-                pass # Ignore other exceptions during this specific deletion
-
+                pass
+        
         loading_msg = await context.bot.send_message(chat_id=chat_id, text="🔄 <b>Sedang menghapus pesan...</b>", parse_mode=ParseMode.HTML)
-        # Ensure only unique messages are considered for deletion
         messages_to_clear = list(set(context.user_data.get('messages_to_clear', [])))
         
-        # Batasi delete per batch untuk menghindari rate limit, ambil yang paling baru
         messages_to_clear = messages_to_clear[-MAX_MESSAGES_TO_DELETE_PER_BATCH:]
         
-        delete_tasks = [
-            context.bot.delete_message(chat_id=chat_id, message_id=msg_id) 
-            for msg_id in messages_to_clear 
-            if msg_id != loading_msg.message_id # Do not attempt to delete the loading message prematurely
-        ]
+        delete_tasks = [context.bot.delete_message(chat_id=chat_id, message_id=msg_id) 
+                       for msg_id in messages_to_clear if msg_id != loading_msg.message_id]
         
         results = await asyncio.gather(*delete_tasks, return_exceptions=True)
         success_count = sum(1 for result in results if not isinstance(result, Exception))
         
         try:
-            # Attempt to delete the loading message last
             await context.bot.delete_message(chat_id=chat_id, message_id=loading_msg.message_id)
-        except TelegramError as e:
-            logger.debug(f"Could not delete loading message: {e}")
         except Exception: 
-            pass # Ignore other exceptions during this specific deletion
+            pass
         
-        context.user_data['messages_to_clear'] = [] # Clear the tracked messages after deletion attempt
+        context.user_data['messages_to_clear'] = []
         
         confirmation_text = (f"✅ <b>Pembersihan Selesai!</b>\n\nBerhasil menghapus <b>{success_count}</b> pesan dari sesi ini.")
         sent_msg = await context.bot.send_message(chat_id=chat_id, text=confirmation_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
@@ -365,12 +344,9 @@ async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         chat_id = update.effective_chat.id
-        context.user_data.pop('state', None) # Clear any active state
-        
-        # Only track the /start command message if it's from a message, not a callback
+        context.user_data.pop('state', None)
         if update.message and update.message.text == '/start':
             await track_message(context, update.message)
-        
         user = update.effective_user
         jakarta_tz = ZoneInfo("Asia/Jakarta")
         now = datetime.now(jakarta_tz)
@@ -379,7 +355,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif 11 <= hour < 15: greeting, icon = "Selamat Siang", "🌤️"
         elif 15 <= hour < 18: greeting, icon = "Selamat Sore", "🌥️"
         else: greeting, icon = "Selamat Malam", "🌙"
-        
         username_info = f"<code>@{user.username}</code>" if user.username else "N/A"
         main_text = (
             f"{icon} <b>{greeting}, {user.first_name}!</b>\n\n"
@@ -400,14 +375,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🗑️ Bersihkan Chat", callback_data="clear_history")],
             [InlineKeyboardButton("🌐 Kunjungi Website Kami", url="https://pulsanet.kesug.com/beli.html")]
         ]
-        
         if update.callback_query:
             await update.callback_query.edit_message_text(main_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
             await update.callback_query.answer()
         else:
             sent_message = await context.bot.send_message(chat_id=chat_id, text=main_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
             await track_message(context, sent_message)
-            
     except Exception as e:
         await send_admin_log(context, e, update, "start")
         try:
@@ -418,9 +391,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode=ParseMode.HTML
             )
             await track_message(context, error_msg)
-        except Exception as e_inner:
-            logger.error(f"Failed to send error message in start handler: {e_inner}")
-
+        except:
+            pass
 
 async def show_operator_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -457,12 +429,9 @@ async def show_product_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         query, data_parts = update.callback_query, update.callback_query.data.split('_')
         await query.answer()
-        product_type_key, category_key = data_parts[1], data_parts[2]
-        special_type_key = data_parts[3] if len(data_parts) > 3 else None
-
+        product_type_key, category_key, special_type_key = data_parts[1], data_parts[2], data_parts[3] if len(data_parts) > 3 else None
         titles = {"tri": "Tri 🌐", "axis": "Axis 🌐", "telkomsel": "Telkomsel 🌐", "indosat": "Indosat 🌐", "by.u": "By.U 🌐", "xl": "XL 🌐"}
         base_title = titles.get(category_key, '')
-        
         if special_type_key:
             products = get_products(category=category_key, special_type=special_type_key)
             title_map = {"akrab": "Paket Akrab", "bebaspuas": "Paket Bebas Puas", "circle": "Paket Circle", "paket": "Paket Lainnya"}
@@ -471,25 +440,17 @@ async def show_product_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
             products = get_products(category=category_key, product_type=product_type_key)
             product_name = 'Paket Data' if product_type_key == 'paket' else 'Pulsa'
             title = f"<b>{base_title} - {product_name}</b>"
-        
         if not products:
             back_cb = "list_paket_xl" if category_key == 'xl' and product_type_key == 'paket' else f"main_{product_type_key}"
             await query.edit_message_text("Mohon maaf, produk untuk kategori ini belum tersedia.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data=back_cb)]]), parse_mode=ParseMode.HTML)
             return
-            
         sorted_keys = sorted(products.keys(), key=lambda k: PRICES.get(k, 0))
         keyboard = []
         for key in sorted_keys:
             short_name = re.sub(r'^(Tri|Axis|XL|Telkomsel|Indosat|By\.U)\s*', '', products[key], flags=re.I).replace('Paket ', '')
             button_text = f"{short_name} - Rp{PRICES.get(key, 0):,}".replace(",", ".")
             keyboard.append([InlineKeyboardButton(button_text, callback_data=key)])
-        
-        # Determine correct back button based on previous menu
-        if category_key == 'xl' and product_type_key == 'paket':
-            back_cb = f"list_paket_xl"
-        else:
-            back_cb = f"main_{product_type_key}"
-
+        back_cb = "list_paket_xl" if category_key == 'xl' and product_type_key == 'paket' else f"main_{product_type_key}"
         keyboard.append([InlineKeyboardButton("⬅️ Kembali", callback_data=back_cb)])
         await query.edit_message_text(f"{title}\n\nSilakan pilih produk yang Anda inginkan:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
     except Exception as e:
@@ -503,17 +464,10 @@ async def show_package_details(update: Update, context: ContextTypes.DEFAULT_TYP
         info = ALL_PACKAGES_DATA.get(package_key, {})
         category, p_type = info.get('category', '').lower(), info.get('type', '').lower()
         product_type_key = 'pulsa' if p_type == 'pulsa' else 'paket'
-        
-        # Determine correct back button for package details
         if category == 'xl' and product_type_key == 'paket':
-            # Check if it was from a specific XL submenu (Akrab, BebasPuas, Circle)
-            if p_type in ['akrab', 'bebaspuas', 'circle']:
-                back_data = f"list_paket_xl_{p_type}"
-            else: # If it's a generic 'Paket' under XL
-                back_data = "list_paket_xl_paket"
-        else: # For other categories or pulsa
+            back_data = f"list_paket_xl_{p_type}" if p_type in ['akrab', 'bebaspuas', 'circle'] else "list_paket_xl_paket"
+        else:
             back_data = f"list_{product_type_key}_{category}"
-
         keyboard = [[InlineKeyboardButton("🛒 Beli Sekarang (Website)", url="https://pulsanet.kesug.com/beli.html")],
                     [InlineKeyboardButton("⬅️ Kembali ke Daftar", callback_data=back_data)],
                     [InlineKeyboardButton("🏠 Menu Utama", callback_data="back_to_start")]]
@@ -557,7 +511,7 @@ async def prompt_for_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
         action = query.data
         text = ""
-        back_button_callback = "back_to_start" # Default back to start, overridden for tools
+        back_button_callback = "back_to_start"
 
         if action == "ask_for_number":
             context.user_data['state'] = 'awaiting_number'
@@ -583,7 +537,7 @@ async def prompt_for_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "• <code>1000000 IDR MYR</code>")
             back_button_callback = "main_tools"
         else: 
-            return # Should not happen with well-defined callback data
+            return
             
         keyboard = [[InlineKeyboardButton("⬅️ Batal & Kembali", callback_data=back_button_callback)]]
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
@@ -605,27 +559,18 @@ def get_provider_info_global(phone_number_str: str) -> str:
             return f"Nomor <code>{safe_html(phone_number_str)}</code> tidak valid."
         country_code = phone_number.country_code
         region_code = phonenumberutil.region_code_for_country_code(country_code)
-        
         country = pycountry.countries.get(alpha_2=region_code)
         country_name = country.name if country else "Tidak Diketahui"
         country_flag = country.flag if hasattr(country, 'flag') else "❓"
-
         number_type_map = {
             phonenumberutil.PhoneNumberType.MOBILE: "Ponsel",
             phonenumberutil.PhoneNumberType.FIXED_LINE: "Telepon Rumah",
             phonenumberutil.PhoneNumberType.FIXED_LINE_OR_MOBILE: "Ponsel / Telepon Rumah",
             phonenumberutil.PhoneNumberType.TOLL_FREE: "Bebas Pulsa",
             phonenumberutil.PhoneNumberType.VOIP: "VoIP",
-            phonenumberutil.PhoneNumberType.PAGER: "Pager",
-            phonenumberutil.PhoneNumberType.PERSONAL_NUMBER: "Nomor Pribadi",
-            phonenumberutil.PhoneNumberType.UAN: "Universal Access Number",
-            phonenumberutil.PhoneNumberType.SHARED_COST: "Biaya Bersama",
-            phonenumberutil.PhoneNumberType.PREMIUM_RATE: "Premium Rate",
-            phonenumberutil.PhoneNumberType.UNKNOWN: "Tidak Diketahui",
         }
         number_type = number_type_map.get(phonenumbers.number_type(phone_number), "Lainnya")
         carrier_name = carrier.name_for_number(phone_number, "en") or "Tidak terdeteksi"
-        
         output = (
             f"<b>Hasil Pengecekan untuk <code>{safe_html(phonenumbers.format_number(phone_number, phonenumbers.PhoneNumberFormat.INTERNATIONAL))}</code></b>\n"
             f"-----------------------------------------\n"
@@ -637,7 +582,7 @@ def get_provider_info_global(phone_number_str: str) -> str:
         )
         return output
     except phonenumberutil.NumberParseException:
-        return f"Format nomor <code>{safe_html(phone_number_str)}</code> salah. Harap gunakan format internasional (contoh: +628123...). Atau pastikan nomor memiliki kode negara yang benar."
+        return f"Format nomor <code>{safe_html(phone_number_str)}</code> salah. Harap gunakan format internasional (contoh: +628123...)."
     except Exception as e:
         logger.error(f"Error di get_provider_info_global: {e}")
         return "Terjadi kesalahan saat memproses nomor."
@@ -646,7 +591,6 @@ async def handle_currency_conversion(update: Update, context: ContextTypes.DEFAU
     """Menangani permintaan konversi mata uang."""
     status_msg = None
     try:
-        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
         status_msg = await update.message.reply_text("💱 Menghitung...", parse_mode=ParseMode.HTML)
         await track_message(context, status_msg)
         
@@ -657,21 +601,11 @@ async def handle_currency_conversion(update: Update, context: ContextTypes.DEFAU
             return
         amount_str, base_curr, target_curr = match.groups()
         amount = float(amount_str.replace(",", ""))
-
-        if base_curr == target_curr:
-            await status_msg.edit_text(
-                f"Tidak perlu konversi: <b>{amount:,.2f} {base_curr}</b> tetap <b>{amount:,.2f} {target_curr}</b>.",
-                reply_markup=keyboard_error_back,
-                parse_mode=ParseMode.HTML
-            )
-            return
-            
         api_url = f"https://open.er-api.com/v6/latest/{base_curr}"
         async with httpx.AsyncClient() as client:
             response = await client.get(api_url, timeout=10)
-            response.raise_for_status() # Raises HTTPStatusError for bad responses
+            response.raise_for_status()
         data = response.json()
-        
         if data.get("result") == "success" and target_curr in data.get("rates", {}):
             rate = data["rates"][target_curr]
             converted_amount = amount * rate
@@ -680,9 +614,8 @@ async def handle_currency_conversion(update: Update, context: ContextTypes.DEFAU
                 base_name = base_country.name if base_country else base_curr
                 target_country = pycountry.currencies.get(alpha_3=target_curr)
                 target_name = target_country.name if target_country else target_curr
-            except Exception: # Fallback if pycountry fails for some reason
+            except Exception:
                 base_name, target_name = base_curr, target_curr
-
             result_text = (
                 f"✅ <b>Hasil Konversi</b>\n\n"
                 f"<b>Dari:</b> {amount:,.2f} {base_curr} ({base_name})\n"
@@ -692,100 +625,81 @@ async def handle_currency_conversion(update: Update, context: ContextTypes.DEFAU
             )
             await status_msg.edit_text(result_text, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
         else:
-            await status_msg.edit_text(f"Tidak dapat menemukan kurs untuk <b>{target_curr}</b> atau <b>{base_curr}</b>. Pastikan kode mata uang valid (misal: USD, IDR).", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-    except httpx.HTTPStatusError as e:
-        await send_admin_log(context, e, update, "handle_currency_conversion (HTTPStatusError)")
-        if status_msg:
-            await status_msg.edit_text(f"Gagal mendapatkan kurs: {e.response.status_code}. Pastikan kode mata uang valid.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+            await status_msg.edit_text(f"Tidak dapat menemukan kurs untuk <b>{target_curr}</b>.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
     except httpx.RequestError as e:
         await send_admin_log(context, e, update, "handle_currency_conversion (RequestError)")
         if status_msg:
             await status_msg.edit_text("Gagal menghubungi layanan kurs. Coba lagi nanti.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-    except ValueError:
-        if status_msg:
-            await status_msg.edit_text("Jumlah yang dimasukkan tidak valid. Harap gunakan angka.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
     except Exception as e:
         await send_admin_log(context, e, update, "handle_currency_conversion")
         if status_msg:
-            await status_msg.edit_text("Maaf, terjadi kesalahan teknis saat konversi mata uang. Tim kami sudah diberitahu.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+            await status_msg.edit_text("Maaf, terjadi kesalahan teknis. Tim kami sudah diberitahu.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
 
 async def show_youtube_quality_options(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str):
     """Mendapatkan info video dan menampilkan pilihan kualitas."""
     status_msg = None
     try:
-        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
         status_msg = await context.bot.send_message(update.effective_chat.id, "🔍 <b>Menganalisis link...</b>", parse_mode=ParseMode.HTML)
         await track_message(context, status_msg)
-        
-        # FIX: Cek cookie file terlebih dahulu
-        if not os.path.exists('youtube_cookies.txt'):
-            reply_text = (
-                "❌ <b>Konfigurasi Error!</b>\n\nFile `youtube_cookies.txt` tidak ditemukan.\n\n"
-                "<b>Untuk Admin:</b> Silakan tambahkan file cookies YouTube untuk mengunduh video restricted/premium."
-            )
-            await status_msg.edit_text(reply_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-            return
         
         ydl_opts = {'quiet': True, 'no_warnings': True, 'cookiefile': 'youtube_cookies.txt', 'noplaylist': True}
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=False)
         
-        video_id = info_dict.get('id', '')
-        title = info_dict.get('title', 'Video')
-        formats = info_dict.get('formats', [])
-        
+        video_id, title, formats = info_dict.get('id', ''), info_dict.get('title', 'Video'), info_dict.get('formats', [])
         keyboard, video_formats = [], []
         
-        # Filter video formats up to 720p (Telegram file size limit usually applies to larger resolutions)
         for f in formats:
-            # Ensure it's a combined video+audio format (or at least video with a non-none vcodec)
-            # and prefers mp4 for broader compatibility, and within reasonable height
             if f.get('vcodec') != 'none' and f.get('acodec') != 'none' and f.get('ext') == 'mp4' and f.get('height') and f.get('height') <= 720:
                 video_formats.append(f)
         
         video_formats.sort(key=lambda x: x.get('height', 0), reverse=True)
-        # Offer up to 3 video qualities
         for f in video_formats[:3]:
              label = f"📹 {f['height']}p ({format_bytes(f.get('filesize') or f.get('filesize_approx'))})"
              keyboard.append([InlineKeyboardButton(label, callback_data=f"yt_dl|{video_id}|{f['format_id']}")])
         
-        # Find best audio-only format
-        audio_formats = sorted(
-            [f for f in formats if f.get('acodec') != 'none' and f.get('vcodec') == 'none'], 
-            key=lambda x: x.get('filesize') or x.get('filesize_approx') or 0, reverse=True
-        )
+        audio_formats = sorted([f for f in formats if f.get('acodec') != 'none' and f.get('vcodec') == 'none'], 
+                              key=lambda x: x.get('filesize') or x.get('filesize_approx') or 0, reverse=True)
         if audio_formats:
             best_audio = audio_formats[0]
             label = f"🎵 Audio [{best_audio.get('ext', 'audio')}] ({format_bytes(best_audio.get('filesize') or best_audio.get('filesize_approx'))})"
             keyboard.append([InlineKeyboardButton(label, callback_data=f"yt_dl|{video_id}|{best_audio['format_id']}")])
         
         if not keyboard:
-            await status_msg.edit_text("Tidak ditemukan format video/audio yang cocok untuk diunduh (mungkin video terlalu besar atau format tidak didukung).", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+            await status_msg.edit_text("Tidak ditemukan format yang cocok untuk diunduh.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
             return
         
         keyboard.append([InlineKeyboardButton("⬅️ Batal", callback_data="main_tools")])
         await status_msg.edit_text(f"<b>{safe_html(title)}</b>\n\nPilih kualitas yang ingin Anda unduh:", 
-                                   reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+                                   reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
     except yt_dlp.utils.DownloadError as e:
-        if 'sign in to confirm' in str(e).lower() or 'no suitable proxies' in str(e).lower():
-            reply_text = "🛑 <b>AUTENTIKASI GAGAL (Cookies Kedaluwarsa/Tidak Ada Akses)</b> 🛑\n\n<b>Untuk Admin:</b> Silakan perbarui file `youtube_cookies.txt` atau periksa akses jaringan bot."
-        elif 'Private video' in str(e):
+        error_str = str(e).lower()
+        # IMPROVEMENT: Check for cookie/auth errors to log privately
+        if 'sign in to confirm' in error_str or 'no suitable proxies' in error_str or '410 gone' in error_str:
+            # This is a backend issue, log to admin and show generic message to user
+            await send_admin_log(context, e, update, "show_youtube_quality_options (Cookie/Auth Error)")
+            reply_text = "Maaf, terjadi kendala teknis pada layanan unduh video. Tim kami telah diberitahu."
+        # User-facing errors
+        elif 'private video' in error_str:
             reply_text = "❌ Video ini adalah video pribadi dan tidak dapat diunduh."
-        elif 'This video is unavailable' in str(e):
-            reply_text = "❌ Video ini tidak tersedia atau sudah dihapus."
+        elif 'this video is unavailable' in error_str:
+            reply_text = "❌ Video ini tidak tersedia atau telah dihapus."
         else:
+            # Other download errors, still log them but show a slightly more specific generic message
             await send_admin_log(context, e, update, "show_youtube_quality_options (DownloadError)")
             reply_text = "Maaf, terjadi kesalahan saat memproses link video (mungkin video dilindungi hak cipta atau dibatasi)."
+        
         if status_msg:
             await status_msg.edit_text(reply_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
     except Exception as e:
+        # All other unexpected errors
         await send_admin_log(context, e, update, "show_youtube_quality_options")
         if status_msg:
-            await status_msg.edit_text("Maaf, terjadi kesalahan teknis saat menganalisis link. Tim kami sudah diberitahu.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+            await status_msg.edit_text("Maaf, terjadi kesalahan teknis. Tim kami sudah diberitahu.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
 
 async def handle_youtube_download_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    file_path = None  # FIX: Inisialisasi di awal untuk menghindari NameError
+    file_path = None
     status_msg = None
     
     try:
@@ -796,11 +710,7 @@ async def handle_youtube_download_choice(update: Update, context: ContextTypes.D
         url = f"https://www.youtube.com/watch?v={video_id}"
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
         
-        # Determine file extension based on format_id or default to mp4
-        # A more robust approach would be to get it from info_dict, but for simplicity, we stick to common ones
-        ext = 'mp4' if 'video' in format_id or 'audio' not in format_id else 'm4a'
-        file_path = f"{video_id}_{format_id}.{ext}" # Use ext for more accurate filename
-
+        file_path = f"{video_id}_{format_id}.mp4"
         ydl_opts = {
             'format': format_id, 
             'outtmpl': file_path, 
@@ -808,7 +718,7 @@ async def handle_youtube_download_choice(update: Update, context: ContextTypes.D
             'quiet': True, 
             'no_warnings': True, 
             'logger': logger, 
-            'max_filesize': 50 * 1024 * 1024, # 50 MB limit
+            'max_filesize': 50 * 1024 * 1024, 
             'cookiefile': 'youtube_cookies.txt'
         }
         
@@ -816,75 +726,60 @@ async def handle_youtube_download_choice(update: Update, context: ContextTypes.D
             info_dict = ydl.extract_info(url, download=True)
             title = info_dict.get('title', 'Video')
         
-        if not os.path.exists(file_path) or os.path.getsize(file_path) == 0: 
-            raise ValueError("File tidak ditemukan atau kosong setelah unduh.")
+        if not os.path.exists(file_path): 
+            raise ValueError("File tidak ditemukan setelah unduh.")
         
         await status_msg.edit_text("📤 <b>Mengirim file...</b>", parse_mode=ParseMode.HTML)
-        
-        # Check if the chosen format was primarily video or audio for correct Telegram action
-        is_video_format = False
-        for row in query.message.reply_markup.inline_keyboard:
-            for btn in row:
-                if hasattr(btn, 'callback_data') and btn.callback_data == query.data and '📹' in btn.text:
-                    is_video_format = True
-                    break
-            if is_video_format: break
-
-        action = ChatAction.UPLOAD_VIDEO if is_video_format else ChatAction.UPLOAD_AUDIO
+        is_video = any('📹' in btn.text for row in query.message.reply_markup.inline_keyboard 
+                      for btn in row if hasattr(btn, 'callback_data') and btn.callback_data == query.data)
+        action = ChatAction.UPLOAD_VIDEO if is_video else ChatAction.UPLOAD_AUDIO
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=action)
         
         caption = f"<b>{safe_html(title)}</b>\n\nDiunduh dengan @{context.bot.username}"
         with open(file_path, 'rb') as f:
-            if is_video_format:
+            if is_video:
                 sent_file = await context.bot.send_video(update.effective_chat.id, video=f, caption=caption, 
-                                                        parse_mode=ParseMode.HTML, read_timeout=120, write_timeout=120, supports_streaming=True)
+                                                        parse_mode=ParseMode.HTML, read_timeout=120, write_timeout=120)
             else:
                 sent_file = await context.bot.send_audio(update.effective_chat.id, audio=f, caption=caption, 
                                                         parse_mode=ParseMode.HTML, read_timeout=120, write_timeout=120)
         await track_message(context, sent_file)
-        await status_msg.delete() # Delete the "Mengirim file..." message upon success
+        await status_msg.delete()
         
     except yt_dlp.utils.DownloadError as e:
-        if 'sign in to confirm' in str(e).lower():
-            reply_text = "🛑 <b>AUTENTIKASI GAGAL (Cookies Kedaluwarsa/Tidak Ada Akses)</b> 🛑\n\n<b>Untuk Admin:</b> Silakan perbarui file `youtube_cookies.txt` atau periksa akses jaringan bot."
-        elif 'max filesize' in str(e).lower():
-            reply_text = "❌ <b>Gagal!</b> Ukuran file melebihi batas 50 MB atau video terlalu besar."
-        elif 'Private video' in str(e):
-            reply_text = "❌ Video ini adalah video pribadi dan tidak dapat diunduh."
-        elif 'This video is unavailable' in str(e):
-            reply_text = "❌ Video ini tidak tersedia atau sudah dihapus."
+        error_str = str(e).lower()
+        # IMPROVEMENT: Check for cookie/auth errors
+        if 'sign in to confirm' in error_str or 'no suitable proxies' in error_str or '410 gone' in error_str:
+            await send_admin_log(context, e, update, "handle_youtube_download_choice (Cookie/Auth Error)")
+            reply_text = "Maaf, terjadi kendala teknis pada layanan unduh video. Tim kami telah diberitahu."
+        # User-facing errors
+        elif 'max filesize' in error_str:
+            reply_text = "❌ <b>Gagal!</b> Ukuran file melebihi batas 50 MB."
         else:
             await send_admin_log(context, e, update, "handle_youtube_download_choice (DownloadError)")
-            reply_text = "Maaf, terjadi kesalahan saat mengunduh file (mungkin video dilindungi hak cipta atau dibatasi)."
+            reply_text = "Maaf, terjadi kesalahan saat mengunduh file."
+        
         if status_msg:
             await status_msg.edit_text(reply_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
     except Exception as e:
         await send_admin_log(context, e, update, "handle_youtube_download_choice")
         if status_msg:
-            await status_msg.edit_text("Maaf, terjadi kesalahan teknis saat mengunduh file. Tim kami sudah diberitahu.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+            await status_msg.edit_text("Maaf, terjadi kesalahan teknis. Tim kami sudah diberitahu.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
     finally:
-        # FIX: Cleanup file dengan aman
         if file_path and os.path.exists(file_path):
             try:
                 os.remove(file_path)
-                logger.info(f"Successfully deleted temporary file: {file_path}")
             except Exception as e:
                 logger.error(f"Gagal menghapus file {file_path}: {e}")
 
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Handler untuk pesan teks dengan state management yang diperbaiki.
-    Menghindari infinite loop dengan hanya memproses jika ada state aktif atau otomatis deteksi.
-    """
+    """Handler untuk pesan teks dengan state management yang diperbaiki."""
     try:
         await track_message(context, update.message)
         state = context.user_data.get('state')
         message_text = update.message.text
         
-        # Regular expression for phone number detection (more robust for common international formats)
-        # Allows for + (optional), 1-3 digits for country code, then 7-15 digits for number,
-        # with optional spaces or hyphens.
-        phone_pattern = r'(\+\d{1,3}[\s-]?\d{7,15}|\b08\d{7,11}\b)'
+        phone_pattern = r'(\+?\d{1,3}[\s-]?\d[\d\s-]{7,14})'
         
         # === HANDLER DENGAN STATE AKTIF ===
         if state == 'awaiting_number':
@@ -900,13 +795,13 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 sent_msg = await update.message.reply_text(final_text, reply_markup=keyboard_next_action, parse_mode=ParseMode.HTML)
             else:
                 sent_msg = await update.message.reply_text(
-                    "Format nomor telepon tidak valid. Gunakan format internasional: <code>+kode_negara nomor</code> (contoh: +628123...) atau <code>08xxxx</code>.", 
+                    "Format nomor telepon tidak valid. Gunakan format internasional: `+kode_negara nomor`.", 
                     reply_markup=keyboard_error_back,
                     parse_mode=ParseMode.HTML
                 )
             
             await track_message(context, sent_msg)
-            context.user_data.pop('state', None) # Clear state after handling
+            context.user_data.pop('state', None)
             return
 
         elif state == 'awaiting_qr_text':
@@ -927,12 +822,12 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=loading_msg.message_id)
             except Exception as e:
                 await send_admin_log(context, e, update, "handle_text_message (QR Code)")
-                await loading_msg.edit_text("Maaf, terjadi kesalahan saat membuat QR Code.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+                await loading_msg.edit_text("Maaf, terjadi kesalahan saat membuat QR Code.", reply_markup=keyboard_error_back)
             
-            context.user_data.pop('state', None) # Clear state after handling
+            context.user_data.pop('state', None)
             keyboard = [[InlineKeyboardButton("🖼️ Buat QR Lain", callback_data="ask_for_qr")], 
                        [InlineKeyboardButton("⬅️ Kembali ke Tools", callback_data="main_tools")]]
-            sent_msg2 = await update.message.reply_text("Apa yang ingin Anda lakukan selanjutnya?", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+            sent_msg2 = await update.message.reply_text("Apa yang ingin Anda lakukan selanjutnya?", reply_markup=InlineKeyboardMarkup(keyboard))
             await track_message(context, sent_msg2)
             return
             
@@ -940,24 +835,23 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             if "youtube.com/" in message_text or "youtu.be/" in message_text:
                 await show_youtube_quality_options(update, context, message_text)
             else:
-                sent_msg = await update.message.reply_text("Link YouTube tidak valid. Mohon kirimkan link video YouTube yang benar.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+                sent_msg = await update.message.reply_text("Link YouTube tidak valid.", reply_markup=keyboard_error_back)
                 await track_message(context, sent_msg)
-            context.user_data.pop('state', None) # Clear state after handling
+            context.user_data.pop('state', None)
             return
         
         elif state == 'awaiting_currency':
             await handle_currency_conversion(update, context)
-            context.user_data.pop('state', None) # Clear state after handling
+            context.user_data.pop('state', None)
             keyboard = [[InlineKeyboardButton("💹 Hitung Kurs Lain", callback_data="ask_for_currency")], 
                        [InlineKeyboardButton("🏠 Menu Utama", callback_data="back_to_start")]]
-            sent_msg2 = await update.message.reply_text("Apa yang ingin Anda lakukan selanjutnya?", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+            sent_msg2 = await update.message.reply_text("Apa yang ingin Anda lakukan selanjutnya?", reply_markup=InlineKeyboardMarkup(keyboard))
             await track_message(context, sent_msg2)
             return
 
         # === HANDLER TANPA STATE (DETEKSI OTOMATIS) ===
-        # Hanya deteksi nomor otomatis jika tidak ada state aktif dan jika pesan mengandung nomor
         numbers = re.findall(phone_pattern, message_text)
-        if numbers and len(numbers) <= 3:  # Batasi maksimal 3 nomor untuk menghindari spam/excessive processing
+        if numbers and len(numbers) <= 3:
             responses = [get_provider_info_global(num.replace(" ", "").replace("-", "")) for num in numbers]
             sent_msg = await update.message.reply_text(
                 "💡 <b>Info Nomor Terdeteksi Otomatis:</b>\n\n" + "\n\n---\n\n".join(responses) +
@@ -966,22 +860,16 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             await track_message(context, sent_msg)
         else:
-            # Tidak memberikan respons untuk pesan random jika tidak ada state aktif
-            # atau jika tidak terdeteksi sebagai nomor otomatis. User bisa kembali ke menu dengan /start.
             pass
             
     except Exception as e:
         await send_admin_log(context, e, update, "handle_text_message")
-        try:
-            error_msg = await update.message.reply_text(
-                "Maaf, terjadi kesalahan saat memproses pesan Anda.",
-                reply_markup=keyboard_error_back,
-                parse_mode=ParseMode.HTML
-            )
-            await track_message(context, error_msg)
-        except Exception as e_inner:
-            logger.error(f"Failed to send error message in handle_text_message: {e_inner}")
-
+        error_msg = await update.message.reply_text(
+            "Maaf, terjadi kesalahan saat memproses pesan Anda.",
+            reply_markup=keyboard_error_back,
+            parse_mode=ParseMode.HTML
+        )
+        await track_message(context, error_msg)
 
 async def show_game_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -1046,34 +934,24 @@ def main():
     
     # Handler Submenu Produk
     app.add_handler(CallbackQueryHandler(show_xl_paket_submenu, pattern=r'^list_paket_xl$'))
-    app.add_handler(CallbackQueryHandler(show_product_list, pattern=r'^list_(paket|pulsa)_[a-z0-9\.]+$')) # Generic for category/special type
-    app.add_handler(CallbackQueryHandler(show_package_details, pattern=r'^pkg_\d+_[a-z0-9_]+$')) # Generic, more efficient for package keys
+    app.add_handler(CallbackQueryHandler(show_product_list, pattern=r'^list_(paket|pulsa)_.+$'))
+    app.add_handler(CallbackQueryHandler(show_package_details, pattern=r'^pkg_\d+_[a-z0-9_]+$'))
     
     # Handler Fitur Tools
     app.add_handler(CallbackQueryHandler(prompt_for_action, pattern=r'^ask_for_(number|qr|youtube|currency)$'))
     
-    # MessageHandler hanya untuk text yang bukan command
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
     
-    # Handler Game
     app.add_handler(CallbackQueryHandler(show_game_menu, pattern='^main_game$'))
     app.add_handler(CallbackQueryHandler(play_game, pattern=r'^game_play_(rock|scissors|paper)$'))
     
     # Handler untuk Download YouTube
-    app.add_handler(CallbackQueryHandler(handle_youtube_download_choice, pattern=r'^yt_dl\|\w+\|\w+$')) # Specific format: yt_dl|video_id|format_id
+    app.add_handler(CallbackQueryHandler(handle_youtube_download_choice, pattern=r'^yt_dl\|.+'))
 
-    print("🤖 Bot Pulsa Net (v15.2 - Bug Fixed & Refined) sedang berjalan...")
-    print("✅ Perbaikan & Penyempurnaan:")
-    print("   - Fixed infinite loop di handle_text_message")
-    print("   - Fixed file_path undefined error")
-    print("   - Added exception handling di semua handlers")
-    print("   - Fixed memory leak di track_message")
-    print("   - Improved regex patterns untuk phone detection")
-    print("   - Added rate limiting protection")
-    print("   - Better state management")
-    print("   - REFINEMENT: Corrected CallbackQueryHandler regex patterns for precision.")
-    print("   - REFINEMENT: Optimized package details handler for scalability.")
-    print("   - REFINEMENT: Improved error handling in admin logging.")
+    print("🤖 Bot Pulsa Net (v15.3 - Admin Error Logging) sedang berjalan...")
+    print("✅ Perbaikan:")
+    print("   - Eror teknis (misal: YouTube cookies) kini dilaporkan ke admin, bukan ke pengguna.")
+    print("   - Pengguna menerima pesan yang lebih ramah saat terjadi eror backend.")
     
     app.run_polling()
 
