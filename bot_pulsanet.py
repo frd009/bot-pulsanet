@@ -2,13 +2,12 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
 # Developer: frd009
-# Versi: 16.5 (Perbaikan Unduhan YouTube Lanjutan)
+# Versi: 16.6 (Penanganan Batas Ukuran File Telegram)
 #
-# CHANGELOG v16.5:
-# - FIX: Mengatasi error "Sign in to confirm you're not a bot" dengan meningkatkan pesan error ke pengguna dan instruksi admin.
-# - FIX: Mengatasi masalah unduhan dan pengiriman file video/audio berdurasi panjang dengan meningkatkan batas ukuran file menjadi 2 GB.
-# - FIX: Memperbaiki deteksi tautan YouTube agar lebih komprehensif, termasuk format dari aplikasi seluler (m.youtube.com).
-# - CHORE: Menambahkan ChatAction.UPLOAD_VIDEO untuk indikator visual saat mengunggah video.
+# CHANGELOG v16.6:
+# - FIX: Mengatasi error `Request Entity Too Large` dengan menerapkan batas unduhan 50 MB, sesuai dengan limitasi API Telegram Bot.
+# - FEAT: Menambahkan peringatan visual (⚠️ >50MB) pada tombol pilihan kualitas YouTube jika ukuran file diperkirakan melebihi 50 MB.
+# - CHORE: Memperjelas pesan error kepada pengguna ketika file yang dipilih terlalu besar.
 # ============================================
 
 import os
@@ -759,14 +758,20 @@ async def show_youtube_quality_options(update: Update, context: ContextTypes.DEF
         
         video_formats.sort(key=lambda x: x.get('height', 0), reverse=True)
         for f in video_formats[:3]:
-              label = f"📹 {f['height']}p ({format_bytes(f.get('filesize') or f.get('filesize_approx'))})"
-              keyboard.append([InlineKeyboardButton(label, callback_data=f"yt_dl|{video_id}|{f['format_id']}")])
+            label = f"📹 {f['height']}p ({format_bytes(f.get('filesize') or f.get('filesize_approx'))})"
+            file_size_bytes = f.get('filesize') or f.get('filesize_approx')
+            if file_size_bytes and file_size_bytes > 50 * 1024 * 1024:
+                label += " ⚠️ >50MB"
+            keyboard.append([InlineKeyboardButton(label, callback_data=f"yt_dl|{video_id}|{f['format_id']}")])
         
         audio_formats = sorted([f for f in formats if f.get('acodec') != 'none' and f.get('vcodec') == 'none'],  
                                  key=lambda x: x.get('filesize') or x.get('filesize_approx') or 0, reverse=True)
         if audio_formats:
             best_audio = audio_formats[0]
             label = f"🎵 Audio [{best_audio.get('ext', 'audio')}] ({format_bytes(best_audio.get('filesize') or best_audio.get('filesize_approx'))})"
+            file_size_bytes = best_audio.get('filesize') or best_audio.get('filesize_approx')
+            if file_size_bytes and file_size_bytes > 50 * 1024 * 1024:
+                label += " ⚠️ >50MB"
             keyboard.append([InlineKeyboardButton(label, callback_data=f"yt_dl|{video_id}|{best_audio['format_id']}")])
         
         if not keyboard:
@@ -781,8 +786,13 @@ async def show_youtube_quality_options(update: Update, context: ContextTypes.DEF
         
         keyboard.append([InlineKeyboardButton("⬅️ Batal", callback_data="main_tools")])
         try:
-            await status_msg.edit_text(f"<b>{safe_html(title)}</b>\n\nPilih kualitas yang ingin Anda unduh:",  
-                                       reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+            await status_msg.edit_text(
+                f"<b>{safe_html(title)}</b>\n\n"
+                "Pilih kualitas yang ingin Anda unduh:\n\n"
+                "<i>⚠️ <b>Perhatian:</b> File di atas 50 MB mungkin gagal dikirim karena batasan Telegram Bot.</i>",
+                reply_markup=InlineKeyboardMarkup(keyboard), 
+                parse_mode=ParseMode.HTML
+            )
         except BadRequest as e:
             if "Message is not modified" in str(e):
                 # This could happen if a callback query is triggered but the message content doesn't change
@@ -856,7 +866,7 @@ async def handle_youtube_download_choice(update: Update, context: ContextTypes.D
             'quiet': True,  
             'no_warnings': True,  
             'logger': logger,  
-            'max_filesize': 2 * 1024 * 1024 * 1024,  # Mengubah batas ukuran file menjadi 2 GB
+            'max_filesize': 50 * 1024 * 1024,  # KEMBALIKAN: Batas unggah bot adalah 50 MB
             'cookiefile': 'youtube_cookies.txt',
             'rm_cachedir': True,
             'retries': 3,  
@@ -945,7 +955,7 @@ async def handle_youtube_download_choice(update: Update, context: ContextTypes.D
             await send_admin_log(context, e, update, "handle_youtube_download_choice (Cookie/Auth Error)", custom_message=admin_alert)
             reply_text = "Maaf, terjadi kendala teknis pada layanan unduh video. Tim kami telah diberitahu. (Authentikasi YouTube gagal)"
         elif 'max filesize' in error_str:
-            reply_text = "❌ <b>Gagal!</b> Ukuran file melebihi batas 2 GB yang diizinkan."
+            reply_text = "❌ <b>Gagal!</b> Ukuran file melebihi batas unggah bot (50 MB)."
         else:
             await send_admin_log(context, e, update, "handle_youtube_download_choice (DownloadError)")
             reply_text = "Maaf, terjadi kesalahan saat mengunduh file (mungkin video dilindungi hak cipta atau dibatasi)."
@@ -1179,11 +1189,10 @@ def main():
     app.add_handler(CallbackQueryHandler(play_game, pattern=r'^game_play_(rock|scissors|paper)$'))
     app.add_handler(CallbackQueryHandler(handle_youtube_download_choice, pattern=r'^yt_dl\|.+'))
 
-    print("🤖 Bot Pulsa Net (v16.5 - Perbaikan Unduhan YouTube Lanjutan) sedang berjalan...")
+    print("🤖 Bot Pulsa Net (v16.6 - Penanganan Batas Ukuran File Telegram) sedang berjalan...")
     print("✅ Perbaikan:")
-    print("   - Mengatasi error 'Sign in to confirm you’re not a bot' dengan meningkatkan pesan error ke pengguna dan instruksi admin.")
-    print("   - Mengatasi masalah unduhan dan pengiriman file video/audio berdurasi panjang dengan meningkatkan batas ukuran file menjadi 2 GB.")
-    print("   - Memperbaiki deteksi tautan YouTube agar lebih komprehensif, termasuk format dari aplikasi seluler (m.youtube.com).")
+    print("   - Mengatasi error 'Request Entity Too Large' dengan menerapkan batas unduhan 50 MB.")
+    print("   - Menambahkan peringatan visual untuk file di atas 50 MB.")
     
     app.run_polling()
 
