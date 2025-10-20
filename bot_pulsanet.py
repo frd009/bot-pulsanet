@@ -25,6 +25,7 @@ import asyncio
 import logging
 import httpx
 import traceback
+import base64 # <-- TAMBAHKAN IMPORT INI
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -1135,12 +1136,28 @@ async def play_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # 🚀 FUNGSI UTAMA UNTUK MENJALANKAN BOT
 # ==============================================================================
 
+def setup_youtube_cookies():
+    """Membaca cookie dari environment variable dan menuliskannya ke file."""
+    cookie_data_base64 = os.environ.get("YOUTUBE_COOKIES_BASE64")
+    if cookie_data_base64:
+        try:
+            cookie_data = base64.b64decode(cookie_data_base64).decode('utf-8')
+            with open('youtube_cookies.txt', 'w') as f:
+                f.write(cookie_data)
+            logger.info("File youtube_cookies.txt berhasil dibuat dari environment variable.")
+        except Exception as e:
+            logger.error(f"Gagal membuat file cookie dari base64: {e}")
+    else:
+        logger.warning("Environment variable YOUTUBE_COOKIES_BASE64 tidak ditemukan. Fitur YouTube mungkin tidak berfungsi optimal.")
+
 def main():
     TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not TOKEN:
         raise ValueError("Token bot tidak ditemukan! Atur TELEGRAM_BOT_TOKEN di environment variable.")
     if not ADMIN_ID:
         logger.warning("TELEGRAM_ADMIN_ID tidak diatur. Laporan eror tidak akan dikirimkan ke admin.")
+
+    setup_youtube_cookies() # <-- TAMBAHKAN PANGGILAN FUNGSI INI DI SINI
 
     app = Application.builder().token(TOKEN).build()
     
