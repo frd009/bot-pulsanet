@@ -2,7 +2,11 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
 # Developer: frd009
-# Versi: 16.7 (Verifikasi Ukuran File Final)
+# Versi: 16.8 (Peningkatan Batas Ukuran File Unggah)
+#
+# CHANGELOG v16.8:
+# - UPDATE: Meningkatkan batas ukuran file unduhan dan unggahan YouTube menjadi 300 MB.
+# - CHORE: Memperbarui pesan peringatan dan error untuk mencerminkan batas ukuran file yang baru.
 #
 # CHANGELOG v16.7:
 # - FIX: Mengatasi error `Request Entity Too Large` secara tuntas dengan menambahkan pengecekan ukuran file final setelah unduhan selesai.
@@ -54,6 +58,8 @@ ADMIN_ID = os.environ.get("TELEGRAM_ADMIN_ID")
 MAX_MESSAGES_TO_TRACK = 50
 MAX_MESSAGES_TO_DELETE_PER_BATCH = 30
 CHROME_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36"
+MAX_UPLOAD_FILE_SIZE_MB = 300 # New maximum upload size in MB
+MAX_UPLOAD_FILE_SIZE_BYTES = MAX_UPLOAD_FILE_SIZE_MB * 1024 * 1024
 
 # ==============================================================================
 # 📦 DATA PRODUK
@@ -753,30 +759,32 @@ async def show_youtube_quality_options(update: Update, context: ContextTypes.DEF
         keyboard, video_formats = [], []
         
         for f in formats:
-            if f.get('vcodec') != 'none' and f.get('acodec') != 'none' and f.get('ext') == 'mp4' and f.get('height') and f.get('height') <= 720:
-                video_formats.append(f)
+            # Only allow video formats with audio that are mp4 and up to 720p.
+            # And also ensure they are below MAX_UPLOAD_FILE_SIZE_BYTES
+            if (f.get('vcodec') != 'none' and f.get('acodec') != 'none' and f.get('ext') == 'mp4' and 
+                f.get('height') and f.get('height') <= 720):
+                file_size_bytes = f.get('filesize') or f.get('filesize_approx')
+                if not file_size_bytes or file_size_bytes <= MAX_UPLOAD_FILE_SIZE_BYTES:
+                    video_formats.append(f)
+                else:
+                    logger.info(f"Skipping format {f.get('format_id')} due to size {format_bytes(file_size_bytes)} > {format_bytes(MAX_UPLOAD_FILE_SIZE_BYTES)}")
         
         video_formats.sort(key=lambda x: x.get('height', 0), reverse=True)
-        for f in video_formats[:3]:
+        for f in video_formats[:3]: # Offer up to 3 highest quality video options within limits
             label = f"📹 {f['height']}p ({format_bytes(f.get('filesize') or f.get('filesize_approx'))})"
-            file_size_bytes = f.get('filesize') or f.get('filesize_approx')
-            if file_size_bytes and file_size_bytes > 50 * 1024 * 1024:
-                label += " ⚠️ >50MB"
             keyboard.append([InlineKeyboardButton(label, callback_data=f"yt_dl|{video_id}|{f['format_id']}")])
         
-        audio_formats = sorted([f for f in formats if f.get('acodec') != 'none' and f.get('vcodec') == 'none'],  
+        audio_formats = sorted([f for f in formats if f.get('acodec') != 'none' and f.get('vcodec') == 'none' and 
+                                (not f.get('filesize') or f.get('filesize') <= MAX_UPLOAD_FILE_SIZE_BYTES)],  
                                  key=lambda x: x.get('filesize') or x.get('filesize_approx') or 0, reverse=True)
         if audio_formats:
             best_audio = audio_formats[0]
             label = f"🎵 Audio [{best_audio.get('ext', 'audio')}] ({format_bytes(best_audio.get('filesize') or best_audio.get('filesize_approx'))})"
-            file_size_bytes = best_audio.get('filesize') or best_audio.get('filesize_approx')
-            if file_size_bytes and file_size_bytes > 50 * 1024 * 1024:
-                label += " ⚠️ >50MB"
             keyboard.append([InlineKeyboardButton(label, callback_data=f"yt_dl|{video_id}|{best_audio['format_id']}")])
         
         if not keyboard:
             try:
-                await status_msg.edit_text("Tidak ditemukan format yang cocok untuk diunduh.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+                await status_msg.edit_text(f"Tidak ditemukan format yang cocok untuk diunduh (atau melebihi batas {MAX_UPLOAD_FILE_SIZE_MB} MB).", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
             except BadRequest as e:
                 if "Message is not modified" in str(e):
                     logger.info(f"Tried to edit status_msg {status_msg.message_id} with identical content (no suitable formats). Skipping.")
@@ -789,7 +797,7 @@ async def show_youtube_quality_options(update: Update, context: ContextTypes.DEF
             await status_msg.edit_text(
                 f"<b>{safe_html(title)}</b>\n\n"
                 "Pilih kualitas yang ingin Anda unduh:\n\n"
-                "<i>⚠️ <b>Perhatian:</b> File di atas 50 MB mungkin gagal dikirim karena batasan Telegram Bot.</i>",
+                f"<i>⚠️ <b>Perhatian:</b> File di atas {MAX_UPLOAD_FILE_SIZE_MB} MB mungkin gagal dikirim karena batasan Telegram Bot.</i>",
                 reply_markup=InlineKeyboardMarkup(keyboard), 
                 parse_mode=ParseMode.HTML
             )
@@ -866,7 +874,7 @@ async def handle_youtube_download_choice(update: Update, context: ContextTypes.D
             'quiet': True,  
             'no_warnings': True,  
             'logger': logger,  
-            'max_filesize': 50 * 1024 * 1024,  # KEMBALIKAN: Batas unggah bot adalah 50 MB
+            'max_filesize': MAX_UPLOAD_FILE_SIZE_BYTES,  # Menggunakan variabel global yang baru
             'cookiefile': 'youtube_cookies.txt',
             'rm_cachedir': True,
             'retries': 3,  
@@ -910,17 +918,17 @@ async def handle_youtube_download_choice(update: Update, context: ContextTypes.D
         
         # --- PERBAIKAN BARU: Pengecekan ukuran file final ---
         final_file_size = os.path.getsize(file_path)
-        if final_file_size > 50 * 1024 * 1024:
-            logger.warning(f"File {file_path} terunduh tetapi ukurannya ({format_bytes(final_file_size)}) melebihi batas 50 MB.")
+        if final_file_size > MAX_UPLOAD_FILE_SIZE_BYTES:
+            logger.warning(f"File {file_path} terunduh tetapi ukurannya ({format_bytes(final_file_size)}) melebihi batas {MAX_UPLOAD_FILE_SIZE_MB} MB.")
             await send_admin_log(
                 context,
-                ValueError(f"File downloaded but size ({format_bytes(final_file_size)}) > 50MB. yt-dlp estimate was inaccurate."),
+                ValueError(f"File downloaded but size ({format_bytes(final_file_size)}) > {MAX_UPLOAD_FILE_SIZE_MB}MB. yt-dlp estimate was inaccurate."),
                 update,
                 "handle_youtube_download_choice",
                 custom_message="File was deleted before upload attempt."
             )
             await status_msg.edit_text(
-                f"❌ <b>Gagal!</b> File berhasil diunduh, tetapi ukurannya ({format_bytes(final_file_size)}) melebihi batas unggah bot sebesar 50 MB. Silakan pilih kualitas yang lebih rendah.",
+                f"❌ <b>Gagal!</b> File berhasil diunduh, tetapi ukurannya ({format_bytes(final_file_size)}) melebihi batas unggah bot sebesar {MAX_UPLOAD_FILE_SIZE_MB} MB. Silakan pilih kualitas yang lebih rendah.",
                 reply_markup=keyboard_error_back,
                 parse_mode=ParseMode.HTML
             )
@@ -972,7 +980,7 @@ async def handle_youtube_download_choice(update: Update, context: ContextTypes.D
             await send_admin_log(context, e, update, "handle_youtube_download_choice (Cookie/Auth Error)", custom_message=admin_alert)
             reply_text = "Maaf, terjadi kendala teknis pada layanan unduh video. Tim kami telah diberitahu. (Authentikasi YouTube gagal)"
         elif 'max filesize' in error_str:
-            reply_text = "❌ <b>Gagal!</b> Ukuran file yang dipilih melebihi batas unduh bot (50 MB)."
+            reply_text = f"❌ <b>Gagal!</b> Ukuran file yang dipilih melebihi batas unduh bot ({MAX_UPLOAD_FILE_SIZE_MB} MB)."
         else:
             await send_admin_log(context, e, update, "handle_youtube_download_choice (DownloadError)")
             reply_text = "Maaf, terjadi kesalahan saat mengunduh file (mungkin video dilindungi hak cipta atau dibatasi)."
@@ -1206,10 +1214,10 @@ def main():
     app.add_handler(CallbackQueryHandler(play_game, pattern=r'^game_play_(rock|scissors|paper)$'))
     app.add_handler(CallbackQueryHandler(handle_youtube_download_choice, pattern=r'^yt_dl\|.+'))
 
-    print("🤖 Bot Pulsa Net (v16.7 - Verifikasi Ukuran File Final) sedang berjalan...")
-    print("✅ Perbaikan:")
-    print("   - Mengatasi error 'Request Entity Too Large' dengan verifikasi ukuran file final.")
-    print("   - Memperjelas pesan error untuk file yang melebihi batas 50 MB.")
+    print(f"🤖 Bot Pulsa Net (v16.8 - Peningkatan Batas Ukuran File Unggah) sedang berjalan...")
+    print("✅ Pembaruan:")
+    print(f"   - Batas unggah file YouTube ditingkatkan menjadi {MAX_UPLOAD_FILE_SIZE_MB} MB.")
+    print("   - Pesan peringatan dan error telah disesuaikan.")
     
     app.run_polling()
 
