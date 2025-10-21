@@ -2,14 +2,14 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
 # Developer: frd009
-# Versi: 16.11 (Graceful Shutdown & More Tools)
+# Versi: 16.12 (Robust Media Downloader)
 #
-# CHANGELOG v16.11:
-# - ADD: Mekanisme Graceful Shutdown untuk menghentikan bot dengan aman (Ctrl+C).
-# - ADD: Fitur "Media Downloader" universal untuk mengunduh video/gambar dari Instagram, Twitter, TikTok, dll.
-# - ADD: Fitur "Password Generator" sebagai alat bantu keamanan.
-# - UPDATE: Merombak menu Tools untuk mengakomodasi fitur-fitur baru.
-# - CHORE: Memperbarui versi bot dan pesan startup.
+# CHANGELOG v16.12:
+# - FIX: Mengatasi `ExtractorError` saat link tidak mengandung media (misal, tweet teks saja).
+#   Bot sekarang akan memberikan pesan yang jelas kepada pengguna.
+# - FIX: Mengatasi `ValueError: File tidak ditemukan` dengan menyempurnakan logika pencarian file
+#   setelah unduhan selesai, membuatnya lebih andal.
+# - CHORE: Memperbarui penanganan error di `handle_media_download` agar lebih spesifik.
 # ============================================
 
 import os
@@ -64,7 +64,7 @@ CHROME_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.3
 MAX_UPLOAD_FILE_SIZE_MB = 300 # New maximum upload size in MB
 MAX_UPLOAD_FILE_SIZE_BYTES = MAX_UPLOAD_FILE_SIZE_MB * 1024 * 1024
 
-# --- PERBAIKAN: Graceful Shutdown ---
+# --- Graceful Shutdown ---
 bot_application = None
 
 def signal_handler(sig, frame):
@@ -89,7 +89,7 @@ def signal_handler(sig, frame):
     
     print("👋 Goodbye!")
     sys.exit(0)
-# --- AKHIR PERBAIKAN ---
+# --- AKHIR Graceful Shutdown ---
 
 # ==============================================================================
 # 📦 DATA PRODUK
@@ -462,7 +462,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     raise e
         else:
-            # --- PERBAIKAN: Menambahkan Retry untuk TimedOut Error ---
+            # --- Retry untuk TimedOut Error ---
             sent_message = None
             for attempt in range(3): # Coba hingga 3 kali
                 try:
@@ -485,7 +485,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 raise TimedOut("Gagal mengirim pesan setelah 3 kali percobaan.")
 
             await track_message(context, sent_message)
-            # --- AKHIR PERBAIKAN ---
+            # --- AKHIR Retry ---
     except Exception as e:
         await send_admin_log(context, e, update, "start")
         try:
@@ -1155,7 +1155,7 @@ async def show_game_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = [[InlineKeyboardButton("Batu 🗿", callback_data="game_play_rock"),
                      InlineKeyboardButton("Gunting ✂️", callback_data="game_play_scissors"),
                      InlineKeyboardButton("Kertas 📄", callback_data="game_play_paper")],
-                    [InlineKeyboardButton("⬅️ Kembali ke Menu Tools", callback_data="main_tools")]]
+                    [InlineKeyboardButton("⬅️ Kembali ke Tools", callback_data="main_tools")]]
         try:
             await query.edit_message_text("<b>🎮 Game Batu-Gunting-Kertas</b>\n\nAyo bermain! Pilih jagoanmu:",
                                           reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
@@ -1245,13 +1245,15 @@ async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TY
 
         info_dict = await asyncio.to_thread(run_yt_dlp_sync, ydl_opts, url, download=True)
         
-        file_path = info_dict.get('_filename')
+        # --- PERBAIKAN: Logika pencarian file yang lebih andal ---
+        file_path = info_dict.get('filepath') or info_dict.get('_filename')
         if not file_path or not os.path.exists(file_path):
             # Fallback jika nama file tidak ditemukan
             potential_files = [f for f in os.listdir('.') if f.startswith(f"media_{update.effective_message.id}")]
             if not potential_files:
                 raise ValueError("File tidak ditemukan setelah diunduh oleh yt-dlp.")
             file_path = potential_files[0]
+        # --- AKHIR PERBAIKAN ---
             
         title = info_dict.get('title', 'Media')
         uploader = info_dict.get('uploader', 'Tidak diketahui')
@@ -1280,6 +1282,17 @@ async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TY
         next_msg = await context.bot.send_message(update.effective_chat.id, "✅ Unduhan selesai.", reply_markup=keyboard_next)
         await track_message(context, next_msg)
 
+    # --- PERBAIKAN: Penanganan error yang lebih spesifik ---
+    except yt_dlp.utils.ExtractorError as e:
+        error_str = str(e).lower()
+        reply_text = "❌ <b>Gagal!</b> Link ini tidak mengandung video atau gambar yang bisa diunduh."
+        if "no video could be found" in error_str:
+            reply_text = "❌ <b>Gagal!</b> Tidak ada video yang dapat ditemukan di link ini."
+        
+        logger.warning(f"ExtractorError for URL {url}: {e}")
+        if status_msg:
+            await status_msg.edit_text(reply_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+
     except yt_dlp.utils.DownloadError as e:
         error_str = str(e).lower()
         reply_text = "Maaf, terjadi kesalahan saat mengunduh media."
@@ -1291,6 +1304,7 @@ async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TY
         await send_admin_log(context, e, update, "handle_media_download")
         if status_msg:
             await status_msg.edit_text(reply_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+    # --- AKHIR PERBAIKAN ---
             
     except Exception as e:
         await send_admin_log(context, e, update, "handle_media_download")
@@ -1461,7 +1475,7 @@ def main():
     # Enhanced cookie setup dengan validasi
     cookie_valid = setup_youtube_cookies_enhanced()
 
-    # --- PERBAIKAN: Graceful Shutdown & Timeout ---
+    # --- Graceful Shutdown & Timeout ---
     # Register signal handlers
     signal.signal(signal.SIGINT, signal_handler)   # Ctrl+C
     signal.signal(signal.SIGTERM, signal_handler)  # Kill signal
@@ -1469,7 +1483,7 @@ def main():
 
     timeout_config = HTTPXRequest(connect_timeout=10.0, read_timeout=20.0, write_timeout=20.0)
     bot_application = Application.builder().token(TOKEN).request(timeout_config).build()
-    # --- AKHIR PERBAIKAN ---
+    # --- AKHIR Graceful Shutdown & Timeout ---
     
     # Tambahkan semua handler ke bot_application
     bot_application.add_handler(CommandHandler("start", start))
@@ -1489,14 +1503,14 @@ def main():
     bot_application.add_handler(CallbackQueryHandler(generate_password, pattern='^gen_password$'))
 
 
-    print(f"🤖 Bot Pulsa Net (v16.11 - Graceful Shutdown & More Tools) sedang berjalan...")
+    print(f"🤖 Bot Pulsa Net (v16.12 - Robust Media Downloader) sedang berjalan...")
     if cookie_valid:
-        print("✅ YouTube Downloader: AKTIF")
+        print("✅ YouTube & Media Downloader: AKTIF")
     else:
-        print("❌ YouTube Downloader: NONAKTIF (cookies invalid)")
+        print("❌ YouTube & Media Downloader: NONAKTIF (cookies invalid)")
         logger.error("=" * 60)
-        logger.error("PERINGATAN: Bot akan tetap berjalan, tapi fitur YouTube TIDAK AKAN BEKERJA!")
-        logger.error("Segera perbaiki masalah cookies untuk mengaktifkan fitur YouTube Downloader.")
+        logger.error("PERINGATAN: Bot akan tetap berjalan, tapi fitur unduh media TIDAK AKAN BEKERJA!")
+        logger.error("Segera perbaiki masalah cookies untuk mengaktifkan fitur Downloader.")
         logger.error("=" * 60)
     print("💡 Tekan Ctrl+C untuk shutdown dengan aman")
     print("=" * 60)
