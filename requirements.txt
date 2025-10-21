@@ -1,7 +1,6 @@
 python-telegram-bot
-httpx
-qrcode
-Pillow
 yt-dlp
+httpx
+qrcode[pil]
 phonenumbers
 pycountry
