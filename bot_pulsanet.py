@@ -2,16 +2,15 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
 # Developer: frd009
-# Versi: 16.8 (Peningkatan Batas Ukuran File Unggah)
+# Versi: 16.9 (Enhanced Cookie Management & YouTube Error Handling)
 #
-# CHANGELOG v16.8:
-# - UPDATE: Meningkatkan batas ukuran file unduhan dan unggahan YouTube menjadi 300 MB.
-# - CHORE: Memperbarui pesan peringatan dan error untuk mencerminkan batas ukuran file yang baru.
-#
-# CHANGELOG v16.7:
-# - FIX: Mengatasi error `Request Entity Too Large` secara tuntas dengan menambahkan pengecekan ukuran file final setelah unduhan selesai.
-#        Jika file ternyata melebihi 50 MB, proses unggah dibatalkan sebelum terjadi error.
-# - CHORE: Sedikit meningkatkan pesan error untuk kasus ini agar lebih informatif bagi pengguna.
+# CHANGELOG v16.9:
+# - ADD: Fungsi setup_youtube_cookies_enhanced untuk validasi mendalam saat startup.
+# - ADD: Fungsi validate_youtube_cookies untuk memeriksa format, kelengkapan, dan tanggal kedaluwarsa cookie.
+# - ADD: Fungsi get_ytdlp_options untuk sentralisasi konfigurasi yt-dlp yang lebih kuat.
+# - UPDATE: Handler YouTube sekarang mendeteksi error cookie secara spesifik dan memberikan pesan yang lebih informatif kepada pengguna dan admin.
+# - UPDATE: Meningkatkan opsi yt-dlp dengan retry yang lebih tinggi dan bypass untuk beberapa batasan.
+# - CHORE: Memperbarui versi bot dan log startup.
 # ============================================
 
 import os
@@ -25,8 +24,9 @@ import logging
 import httpx
 import traceback
 import base64
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
+from pathlib import Path
 
 # --- Import library baru ---
 import qrcode
@@ -193,31 +193,31 @@ def create_general_description(package_key):
     header = create_header(info)
     if info.get('type') == 'Pulsa':
         return (header + f"\n• 💰 <b>Nominal Pulsa:</b> {info.get('data', 'N/A')}\n"
-                            f"• ⏳ <b>Penambahan Masa Aktif:</b> {info.get('validity', 'N/A')}\n"
-                            f"• 📱 <b>Provider:</b> {info.get('category', 'N/A')}")
+                         f"• ⏳ <b>Penambahan Masa Aktif:</b> {info.get('validity', 'N/A')}\n"
+                         f"• 📱 <b>Provider:</b> {info.get('category', 'N/A')}")
     else:
         return (header + f"\n• 💾 <b>Kuota Utama:</b> {info.get('data', 'N/A')}\n"
-                            f"• 📅 <b>Masa Aktif:</b> {info.get('validity', 'N/A')}\n"
-                            f"• 📝 <b>Rincian:</b> {safe_html(info.get('details', 'N/A'))}")
+                         f"• 📅 <b>Masa Aktif:</b> {info.get('validity', 'N/A')}\n"
+                         f"• 📝 <b>Rincian:</b> {safe_html(info.get('details', 'N/A'))}")
 
 def create_akrab_description(package_key):
     info = ALL_PACKAGES_DATA.get(package_key, {})
     quota_info = AKRAB_QUOTA_DETAILS.get(package_key)
     description = create_header(info) + "\n"
     description += ("<i>Paket keluarga resmi dari XL dengan kuota besar yang bisa dibagi-pakai.</i>\n\n"
-                    "✅ <b>Jenis Paket:</b> Resmi (OFFICIAL)\n" "🛡️ <b>Jaminan:</b> Garansi Penuh\n"
-                    "🌐 <b>Kompatibilitas:</b> XL / AXIS / LIVEON\n" "📅 <b>Masa Aktif:</b> ±28 hari (sesuai ketentuan XL)\n\n")
+                      "✅ <b>Jenis Paket:</b> Resmi (OFFICIAL)\n" "🛡️ <b>Jaminan:</b> Garansi Penuh\n"
+                      "🌐 <b>Kompatibilitas:</b> XL / AXIS / LIVEON\n" "📅 <b>Masa Aktif:</b> ±28 hari (sesuai ketentuan XL)\n\n")
     if quota_info:
         description += ("💾 <b>Estimasi Total Kuota (berdasarkan zona):</b>\n"
-                        f"  - <b>Area 1:</b> {quota_info.get('1', 'N/A')}\n" f"  - <b>Area 2:</b> {quota_info.get('2', 'N/A')}\n"
-                        f"  - <b>Area 3:</b> {quota_info.get('3', 'N/A')}\n" f"  - <b>Area 4:</b> {quota_info.get('4', 'N/A')}\n\n")
+                          f"  - <b>Area 1:</b> {quota_info.get('1', 'N/A')}\n" f"  - <b>Area 2:</b> {quota_info.get('2', 'N/A')}\n"
+                          f"  - <b>Area 3:</b> {quota_info.get('3', 'N/A')}\n" f"  - <b>Area 4:</b> {quota_info.get('4', 'N/A')}\n\n")
     else:
         description += f"💾 <b>Kuota Utama:</b> {info.get('data', 'N/A')}\n\n"
     description += ("📋 <b>Prosedur & Ketentuan Penting:</b>\n"
-                    "  - Pastikan SIM terpasang di perangkat (HP/Modem) untuk deteksi lokasi BTS dan klaim bonus kuota lokal.\n"
-                    "  - Jika kuota MyRewards belum masuk sepenuhnya, mohon tunggu 1x24 jam sebelum melapor ke Admin.\n\n"
-                    "ℹ️ <b>Informasi Tambahan:</b>\n" "  - <a href='http://bit.ly/area_akrab'>Cek Pembagian Area Kuota Anda</a>\n"
-                    "  - <a href='https://kmsp-store.com/cara-unreg-paket-akrab-yang-benar'>Panduan Unreg Paket Akrab</a>")
+                      "  - Pastikan SIM terpasang di perangkat (HP/Modem) untuk deteksi lokasi BTS dan klaim bonus kuota lokal.\n"
+                      "  - Jika kuota MyRewards belum masuk sepenuhnya, mohon tunggu 1x24 jam sebelum melapor ke Admin.\n\n"
+                      "ℹ️ <b>Informasi Tambahan:</b>\n" "  - <a href='http://bit.ly/area_akrab'>Cek Pembagian Area Kuota Anda</a>\n"
+                      "  - <a href='https://kmsp-store.com/cara-unreg-paket-akrab-yang-benar'>Panduan Unreg Paket Akrab</a>")
     return description
 
 def create_circle_description(package_key):
@@ -248,15 +248,14 @@ for key in get_products(special_type='Akrab'): PAKET_DESCRIPTIONS[key] = create_
 for key in get_products(special_type='Circle'): PAKET_DESCRIPTIONS[key] = create_circle_description(key)
 for key in get_products(special_type='BebasPuas'): PAKET_DESCRIPTIONS[key] = create_bebaspuas_description(key)
 PAKET_DESCRIPTIONS["bantuan"] = ("<b>Pusat Bantuan & Informasi</b> 🆘\n\n"
-                                 "Selamat datang di pusat bantuan Pulsa Net Bot.\n\n"
-                                 "Jika Anda mengalami kendala teknis, memiliki pertanyaan seputar produk, atau tertarik untuk menjadi reseller, jangan ragu untuk menghubungi Admin kami.\n\n"
-                                 "Gunakan perintah /start untuk kembali ke menu utama kapan saja.\n\n"
-                                 "📞 <b>Admin:</b> @hexynos\n" "🌐 <b>Website Resmi:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
+                                     "Selamat datang di pusat bantuan Pulsa Net Bot.\n\n"
+                                     "Jika Anda mengalami kendala teknis, memiliki pertanyaan seputar produk, atau tertarik untuk menjadi reseller, jangan ragu untuk menghubungi Admin kami.\n\n"
+                                     "Gunakan perintah /start untuk kembali ke menu utama kapan saja.\n\n"
+                                     "📞 <b>Admin:</b> @hexynos\n" "🌐 <b>Website Resmi:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
 
 # ==============================================================================
 # FUNGSI-FUNGSI FITUR TOOLS (HELPER FUNCTIONS)
 # ==============================================================================
-# FIX: Moved all tool helper functions here to ensure they are defined before handlers are.
 
 def get_provider_info_global(phone_number_str: str) -> str:
     """Fungsi canggih untuk mendapatkan info nomor telepon dari seluruh dunia."""
@@ -618,8 +617,8 @@ async def prompt_for_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if action == "ask_for_number":
             context.user_data['state'] = 'awaiting_number'
             text = ("<b>🔍 Cek Info Nomor Telepon (Global)</b>\n\n"
-                    "Silakan kirimkan nomor HP yang ingin Anda periksa, <b>wajib</b> dengan format internasional.\n\n"
-                    "Contoh: <code>+6281234567890</code> (Indonesia), <code>+12025550139</code> (USA).")
+                      "Silakan kirimkan nomor HP yang ingin Anda periksa, <b>wajib</b> dengan format internasional.\n\n"
+                      "Contoh: <code>+6281234567890</code> (Indonesia), <code>+12025550139</code> (USA).")
             back_button_callback = "back_to_start"
         elif action == "ask_for_qr":
             context.user_data['state'] = 'awaiting_qr_text'
@@ -630,12 +629,12 @@ async def prompt_for_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif action == "ask_for_currency":
             context.user_data['state'] = 'awaiting_currency'
             text = ("<b>💹 Kalkulator Kurs Mata Uang</b>\n\n"
-                    "Kirimkan permintaan konversi Anda dalam format:\n"
-                    "<code>[jumlah] [kode_asal] to [kode_tujuan]</code>\n\n"
-                    "<b>Contoh:</b>\n"
-                    "• <code>100 USD to IDR</code>\n"
-                    "• <code>50 EUR JPY</code>\n"
-                    "• <code>1000000 IDR MYR</code>")
+                      "Kirimkan permintaan konversi Anda dalam format:\n"
+                      "<code>[jumlah] [kode_asal] to [kode_tujuan]</code>\n\n"
+                      "<b>Contoh:</b>\n"
+                      "• <code>100 USD to IDR</code>\n"
+                      "• <code>50 EUR JPY</code>\n"
+                      "• <code>1000000 IDR MYR</code>")
         else:  
             return
             
@@ -738,29 +737,62 @@ async def handle_currency_conversion(update: Update, context: ContextTypes.DEFAU
                     logger.error(f"Failed to send error message in handle_currency_conversion error handler: {e_inner}")
 
 async def show_youtube_quality_options(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str):
-    """Gets video info in a separate thread and shows quality options."""
+    """
+    Enhanced version dengan cookie error detection yang lebih baik.
+    """
     status_msg = None
     try:
-        status_msg = await context.bot.send_message(update.effective_chat.id, "🔍 <b>Menganalisis link...</b>", parse_mode=ParseMode.HTML)
+        status_msg = await context.bot.send_message(
+            update.effective_chat.id, 
+            "🔍 <b>Menganalisis link...</b>", 
+            parse_mode=ParseMode.HTML
+        )
         await track_message(context, status_msg)
         
-        ydl_opts = {
-            'quiet': True, 'no_warnings': True, 'noplaylist': True,
-            'cookiefile': 'youtube_cookies.txt',  
-            'rm_cachedir': True,
-            'retries': 3, 'fragment_retries': 3,
-            'http_headers': {'User-Agent': CHROME_USER_AGENT},
-            'nocheckcertificate': True,
-        }
+        ydl_opts = get_ytdlp_options()
         
-        info_dict = await asyncio.to_thread(run_yt_dlp_sync, ydl_opts, url, download=False)
-        
+        try:
+            info_dict = await asyncio.to_thread(run_yt_dlp_sync, ydl_opts, url, download=False)
+        except yt_dlp.utils.DownloadError as e:
+            error_str = str(e).lower()
+            
+            # Deteksi berbagai jenis cookie error
+            cookie_errors = [
+                'sign in to confirm', 'no suitable proxies', '410 gone',
+                'unable to extract', 'login required', 'this video requires payment',
+            ]
+            
+            if any(err in error_str for err in cookie_errors):
+                admin_alert = (
+                    "🚨 CRITICAL: YouTube Cookie Authentication Failed!\n\n"
+                    f"Error Type: {type(e).__name__}\n"
+                    f"Error Message: {str(e)[:200]}\n\n"
+                    "ACTIONS REQUIRED:\n"
+                    "1. Export fresh cookies dari browser (gunakan extension 'Get cookies.txt LOCALLY')\n"
+                    "2. Convert ke base64: base64 youtube_cookies.txt\n"
+                    "3. Update environment variable YOUTUBE_COOKIES_BASE64\n"
+                    "4. Restart bot\n\n"
+                    "Panduan lengkap: https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies"
+                )
+                await send_admin_log(context, e, update, "YouTube Cookie Auth Failed", custom_message=admin_alert)
+                
+                user_message = (
+                    "❌ <b>Layanan YouTube Downloader sedang bermasalah</b>\n\n"
+                    "Sistem autentikasi YouTube memerlukan pembaruan. "
+                    "Admin telah diberitahu dan sedang memperbaiki.\n\n"
+                    "<i>Error: Cookie authentication expired</i>"
+                )
+                await status_msg.edit_text(user_message, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+                return
+            
+            # Error lainnya
+            raise e
+
+        # --- LOGIKA LAMA UNTUK MENAMPILKAN OPSI KUALITAS ---
         video_id, title, formats = info_dict.get('id', ''), info_dict.get('title', 'Video'), info_dict.get('formats', [])
         keyboard, video_formats = [], []
         
         for f in formats:
-            # Only allow video formats with audio that are mp4 and up to 720p.
-            # And also ensure they are below MAX_UPLOAD_FILE_SIZE_BYTES
             if (f.get('vcodec') != 'none' and f.get('acodec') != 'none' and f.get('ext') == 'mp4' and 
                 f.get('height') and f.get('height') <= 720):
                 file_size_bytes = f.get('filesize') or f.get('filesize_approx')
@@ -770,79 +802,40 @@ async def show_youtube_quality_options(update: Update, context: ContextTypes.DEF
                     logger.info(f"Skipping format {f.get('format_id')} due to size {format_bytes(file_size_bytes)} > {format_bytes(MAX_UPLOAD_FILE_SIZE_BYTES)}")
         
         video_formats.sort(key=lambda x: x.get('height', 0), reverse=True)
-        for f in video_formats[:3]: # Offer up to 3 highest quality video options within limits
+        for f in video_formats[:3]:
             label = f"📹 {f['height']}p ({format_bytes(f.get('filesize') or f.get('filesize_approx'))})"
             keyboard.append([InlineKeyboardButton(label, callback_data=f"yt_dl|{video_id}|{f['format_id']}")])
         
         audio_formats = sorted([f for f in formats if f.get('acodec') != 'none' and f.get('vcodec') == 'none' and 
                                 (not f.get('filesize') or f.get('filesize') <= MAX_UPLOAD_FILE_SIZE_BYTES)],  
-                                 key=lambda x: x.get('filesize') or x.get('filesize_approx') or 0, reverse=True)
+                                key=lambda x: x.get('filesize') or x.get('filesize_approx') or 0, reverse=True)
         if audio_formats:
             best_audio = audio_formats[0]
             label = f"🎵 Audio [{best_audio.get('ext', 'audio')}] ({format_bytes(best_audio.get('filesize') or best_audio.get('filesize_approx'))})"
             keyboard.append([InlineKeyboardButton(label, callback_data=f"yt_dl|{video_id}|{best_audio['format_id']}")])
         
         if not keyboard:
-            try:
-                await status_msg.edit_text(f"Tidak ditemukan format yang cocok untuk diunduh (atau melebihi batas {MAX_UPLOAD_FILE_SIZE_MB} MB).", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-            except BadRequest as e:
-                if "Message is not modified" in str(e):
-                    logger.info(f"Tried to edit status_msg {status_msg.message_id} with identical content (no suitable formats). Skipping.")
-                else:
-                    raise e
+            await status_msg.edit_text(f"Tidak ditemukan format yang cocok untuk diunduh (atau melebihi batas {MAX_UPLOAD_FILE_SIZE_MB} MB).", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
             return
         
         keyboard.append([InlineKeyboardButton("⬅️ Batal", callback_data="main_tools")])
-        try:
+        await status_msg.edit_text(
+            f"<b>{safe_html(title)}</b>\n\n"
+            "Pilih kualitas yang ingin Anda unduh:\n\n"
+            f"<i>⚠️ <b>Perhatian:</b> File di atas {MAX_UPLOAD_FILE_SIZE_MB} MB mungkin gagal dikirim karena batasan Telegram Bot.</i>",
+            reply_markup=InlineKeyboardMarkup(keyboard), 
+            parse_mode=ParseMode.HTML
+        )
+        # --- AKHIR LOGIKA LAMA ---
+
+    except Exception as e:
+        await send_admin_log(context, e, update, "show_youtube_quality_options_enhanced")
+        if status_msg:
             await status_msg.edit_text(
-                f"<b>{safe_html(title)}</b>\n\n"
-                "Pilih kualitas yang ingin Anda unduh:\n\n"
-                f"<i>⚠️ <b>Perhatian:</b> File di atas {MAX_UPLOAD_FILE_SIZE_MB} MB mungkin gagal dikirim karena batasan Telegram Bot.</i>",
-                reply_markup=InlineKeyboardMarkup(keyboard), 
+                "Maaf, terjadi kesalahan teknis. Tim kami sudah diberitahu.",
+                reply_markup=keyboard_error_back,
                 parse_mode=ParseMode.HTML
             )
-        except BadRequest as e:
-            if "Message is not modified" in str(e):
-                # This could happen if a callback query is triggered but the message content doesn't change
-                if update.callback_query:
-                    await update.callback_query.answer("Konten tidak berubah.")
-                logger.info(f"Tried to edit status_msg {status_msg.message_id} with identical content (quality options). Skipping.")
-            else:
-                raise e
-    except yt_dlp.utils.DownloadError as e:
-        error_str = str(e).lower()
-        if 'sign in to confirm' in error_str or 'no suitable proxies' in error_str or '410 gone' in error_str:
-            admin_alert = ("CRITICAL: YouTube cookie authentication failed. The `youtube_cookies.txt` file is likely expired or invalid. "
-                           "Please ensure the YOUTUBE_COOKIES_BASE64 environment variable contains fresh cookies. "
-                           "See https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies for tips on exporting cookies.")
-            await send_admin_log(context, e, update, "show_youtube_quality_options (Cookie/Auth Error)", custom_message=admin_alert)
-            reply_text = "Maaf, terjadi kendala teknis pada layanan unduh video. Tim kami telah diberitahu. (Authentikasi YouTube gagal)"
-        elif 'private video' in error_str:
-            reply_text = "❌ Video ini adalah video pribadi dan tidak dapat diunduh."
-        elif 'this video is unavailable' in error_str:
-            reply_text = "❌ Video ini tidak tersedia atau telah dihapus."
-        else:
-            await send_admin_log(context, e, update, "show_youtube_quality_options (DownloadError)")
-            reply_text = "Maaf, terjadi kesalahan saat memproses link video (mungkin video dilindungi hak cipta atau dibatasi)."
-        
-        if status_msg:
-            try:
-                await status_msg.edit_text(reply_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-            except BadRequest as e_inner:
-                if "Message is not modified" in str(e_inner):
-                    logger.info(f"Tried to edit status_msg {status_msg.message_id} to identical error message. Skipping.")
-                else:
-                    logger.error(f"Failed to send error message in show_youtube_quality_options error handler: {e_inner}")
-    except Exception as e:
-        await send_admin_log(context, e, update, "show_youtube_quality_options")
-        if status_msg:
-            try:
-                await status_msg.edit_text("Maaf, terjadi kesalahan teknis. Tim kami sudah diberitahu.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-            except BadRequest as e_inner:
-                if "Message is not modified" in str(e_inner):
-                    logger.info(f"Tried to edit status_msg {status_msg.message_id} to identical technical error message. Skipping.")
-                else:
-                    logger.error(f"Failed to send error message in show_youtube_quality_options error handler: {e_inner}")
 
 async def handle_youtube_download_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -864,51 +857,27 @@ async def handle_youtube_download_choice(update: Update, context: ContextTypes.D
         url = f"https://www.youtube.com/watch?v={video_id}"
         
         is_video = any('📹' in btn.text for row in query.message.reply_markup.inline_keyboard 
-                               for btn in row if hasattr(btn, 'callback_data') and btn.callback_data == query.data)
+                       for btn in row if hasattr(btn, 'callback_data') and btn.callback_data == query.data)
 
-        # -- PERBAIKAN LOGIKA UNDUHAN --
         file_path_template = f"{video_id}_{format_id}.%(ext)s"
-        ydl_opts = {
-            'outtmpl': file_path_template,
-            'noplaylist': True,  
-            'quiet': True,  
-            'no_warnings': True,  
-            'logger': logger,  
-            'max_filesize': MAX_UPLOAD_FILE_SIZE_BYTES,  # Menggunakan variabel global yang baru
-            'cookiefile': 'youtube_cookies.txt',
-            'rm_cachedir': True,
-            'retries': 3,  
-            'fragment_retries': 3,
-            'http_headers': {'User-Agent': CHROME_USER_AGENT},
-            'nocheckcertificate': True,
-        }
+        ydl_opts = get_ytdlp_options() # Menggunakan fungsi helper baru
+        ydl_opts['outtmpl'] = file_path_template
+        ydl_opts['max_filesize'] = MAX_UPLOAD_FILE_SIZE_BYTES
 
         if is_video:
-            # Meminta yt-dlp menggabungkan video dan audio terbaik ke dalam format mp4
             ydl_opts['format'] = f"{format_id}+bestaudio/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
-            ydl_opts['postprocessors'] = [{
-                'key': 'FFmpegVideoConvertor',
-                'preferedformat': 'mp4',
-            }]
+            ydl_opts['postprocessors'] = [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}]
             action = ChatAction.UPLOAD_VIDEO
         else: # is_audio
-            # Meminta yt-dlp untuk mengekstrak audio ke format m4a
             ydl_opts['format'] = f"{format_id}/bestaudio/best"
-            ydl_opts['postprocessors'] = [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'm4a',
-                'preferredquality': '192',
-            }]
-            # PERBAIKAN: Gunakan UPLOAD_DOCUMENT untuk audio
+            ydl_opts['postprocessors'] = [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'm4a', 'preferredquality': '192'}]
             action = ChatAction.UPLOAD_DOCUMENT
-        # -- AKHIR PERBAIKAN --
         
         info_dict = await asyncio.to_thread(run_yt_dlp_sync, ydl_opts, url, download=True)
         title = info_dict.get('title', 'Video')
         file_path = info_dict.get('_filename')
 
         if not file_path or not os.path.exists(file_path):  
-            # Fallback untuk mencari file jika nama tidak didapat dari info_dict
             expected_ext = 'mp4' if is_video else 'm4a'
             found_files = [f for f in os.listdir('.') if f.startswith(video_id) and f.endswith(f".{expected_ext}")]
             if found_files:
@@ -916,7 +885,6 @@ async def handle_youtube_download_choice(update: Update, context: ContextTypes.D
             else:
                 raise ValueError("File tidak ditemukan setelah unduh.")
         
-        # --- PERBAIKAN BARU: Pengecekan ukuran file final ---
         final_file_size = os.path.getsize(file_path)
         if final_file_size > MAX_UPLOAD_FILE_SIZE_BYTES:
             logger.warning(f"File {file_path} terunduh tetapi ukurannya ({format_bytes(final_file_size)}) melebihi batas {MAX_UPLOAD_FILE_SIZE_MB} MB.")
@@ -1075,7 +1043,6 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             return
             
         elif state == 'awaiting_youtube_link':
-            # FIX: Deteksi URL YouTube yang lebih komprehensif
             if re.search(r'(youtube\.com|youtu\.be|m\.youtube\.com)', message_text):
                 await show_youtube_quality_options(update, context, message_text)
             else:
@@ -1124,7 +1091,7 @@ async def show_game_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     [InlineKeyboardButton("⬅️ Kembali ke Menu Tools", callback_data="main_tools")]]
         try:
             await query.edit_message_text("<b>🎮 Game Batu-Gunting-Kertas</b>\n\nAyo bermain! Pilih jagoanmu:",
-                                         reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+                                          reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
         except BadRequest as e:
             if "Message is not modified" in str(e):
                 logger.info(f"Tried to edit message {query.message.message_id} with identical content in show_game_menu. Skipping.")
@@ -1169,34 +1136,161 @@ async def play_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Maaf, terjadi kesalahan pada game.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
 
 # ==============================================================================
-# 🚀 FUNGSI UTAMA UNTUK MENJALANKAN BOT
+# 🚀 FUNGSI UTAMA & FUNGSI BARU UNTUK COOKIES
 # ==============================================================================
 
-def setup_youtube_cookies():
-    """Membaca cookie dari environment variable dan menuliskannya ke file."""
-    cookie_data_base64 = os.environ.get("YOUTUBE_COOKIES_BASE64")
-    if cookie_data_base64:
-        try:
-            cookie_data = base64.b64decode(cookie_data_base64).decode('utf-8')
-            with open('youtube_cookies.txt', 'w') as f:
-                f.write(cookie_data)
-            logger.info("File youtube_cookies.txt berhasil dibuat dari environment variable.")
-        except Exception as e:
-            logger.error(f"Gagal membuat file cookie dari base64: {e}")
-    else:
-        logger.warning("Environment variable YOUTUBE_COOKIES_BASE64 tidak ditemukan. Fitur YouTube mungkin tidak berfungsi optimal. "
-                       "Untuk menghindari error 'Sign in to confirm you’re not a bot', pastikan Anda mengatur variabel ini dengan cookie YouTube yang valid.")
+def validate_youtube_cookies(cookie_file):
+    """
+    Validasi cookies YouTube - cek format dan cookies penting.
+    Return True jika valid, False jika ada masalah.
+    """
+    if not Path(cookie_file).exists():
+        logger.error(f"File {cookie_file} tidak ditemukan!")
+        return False
+    
+    try:
+        with open(cookie_file, 'r') as f:
+            content = f.read()
+        
+        # Cek format Netscape
+        if not content.startswith('# Netscape HTTP Cookie File'):
+            logger.warning("⚠️ Cookie file bukan format Netscape!")
+            logger.warning("Pastikan Anda export dengan extension/tool yang benar")
+        
+        # Cookies penting yang harus ada
+        required_cookies = ['VISITOR_INFO1_LIVE', 'YSC']
+        important_cookies = ['LOGIN_INFO', '__Secure-3PSID', '__Secure-3PAPISID']
+        
+        lines = content.split('\n')
+        found_cookies = {cookie: False for cookie in required_cookies + important_cookies}
+        expiry_dates = {}
+        
+        for line in lines:
+            if line.startswith('#') or not line.strip():
+                continue
+            
+            parts = line.split('\t')
+            if len(parts) >= 7:
+                cookie_name = parts[5]
+                cookie_expiry = parts[4]
+                
+                if cookie_name in found_cookies:
+                    found_cookies[cookie_name] = True
+                    try:
+                        expiry_dates[cookie_name] = int(cookie_expiry)
+                    except ValueError:
+                        pass
+        
+        # Cek cookies wajib
+        missing_required = [c for c in required_cookies if not found_cookies[c]]
+        if missing_required:
+            logger.error(f"❌ Cookies wajib tidak ditemukan: {', '.join(missing_required)}")
+            logger.error("Export ulang cookies dari browser yang sudah login YouTube!")
+            return False
+        
+        # Cek cookies penting (warning saja)
+        missing_important = [c for c in important_cookies if not found_cookies[c]]
+        if missing_important:
+            logger.warning(f"⚠️ Cookies penting tidak ada: {', '.join(missing_important)}")
+            logger.warning("Bot mungkin mengalami masalah dengan video tertentu")
+        
+        # Cek expiry date
+        current_timestamp = int(datetime.now().timestamp())
+        for cookie_name, expiry in expiry_dates.items():
+            if expiry == 0:  # Session cookie
+                continue
+                
+            if expiry < current_timestamp:
+                logger.error(f"❌ Cookie '{cookie_name}' sudah EXPIRED!")
+                logger.error("Export cookies baru dari browser!")
+                return False
+            
+            # Warning jika akan expired dalam 7 hari
+            days_remaining = (expiry - current_timestamp) / 86400
+            if days_remaining < 7:
+                logger.warning(f"⚠️ Cookie '{cookie_name}' akan expired dalam {days_remaining:.1f} hari!")
+                logger.warning("Segera persiapkan cookies baru!")
+        
+        logger.info("✅ Semua validasi cookies passed")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error saat validasi cookies: {e}")
+        return False
 
+def setup_youtube_cookies_enhanced():
+    """
+    Setup cookies dengan validasi dan error handling yang lebih baik.
+    Mendeteksi cookies yang akan expired dan memberikan peringatan.
+    """
+    cookie_data_base64 = os.environ.get("YOUTUBE_COOKIES_BASE64")
+    cookie_file = 'youtube_cookies.txt'
+    
+    if not cookie_data_base64:
+        logger.error("❌ YOUTUBE_COOKIES_BASE64 tidak ditemukan!")
+        logger.error("Fitur YouTube Downloader tidak akan berfungsi.")
+        logger.error("Panduan: Export cookies dari browser → convert ke base64 → set environment variable")
+        return False
+    
+    try:
+        # Decode dan tulis file
+        cookie_data = base64.b64decode(cookie_data_base64).decode('utf-8')
+        with open(cookie_file, 'w') as f:
+            f.write(cookie_data)
+        
+        logger.info("✅ File youtube_cookies.txt berhasil dibuat")
+        
+        # Validasi isi cookies
+        if not validate_youtube_cookies(cookie_file):
+            logger.warning("⚠️ Cookies mungkin tidak valid atau sudah expired!")
+            return False
+            
+        logger.info("✅ Cookies YouTube tervalidasi dengan baik")
+        return True
+        
+    except base64.binascii.Error:
+        logger.error("❌ YOUTUBE_COOKIES_BASE64 bukan base64 yang valid!")
+        logger.error("Pastikan Anda encode file cookies dengan benar:")
+        logger.error("  Linux/Mac: base64 youtube_cookies.txt")
+        logger.error("  Windows: [Convert]::ToBase64String([IO.File]::ReadAllBytes('youtube_cookies.txt'))")
+        return False
+        
+    except Exception as e:
+        logger.error(f"❌ Gagal setup cookies: {e}")
+        return False
+
+def get_ytdlp_options():
+    """
+    Return yt-dlp options dengan konfigurasi optimal.
+    """
+    opts = {
+        'quiet': True,
+        'no_warnings': True,
+        'noplaylist': True,
+        'cookiefile': 'youtube_cookies.txt',
+        'rm_cachedir': True,
+        'retries': 5,  # Tingkatkan retry
+        'fragment_retries': 5,
+        'skip_unavailable_fragments': True,  # Skip fragment yang error
+        'http_headers': {'User-Agent': CHROME_USER_AGENT},
+        'nocheckcertificate': True,
+        # Tambahan untuk bypass restriction
+        'geo_bypass': True,
+        'age_limit': 21,  # Bypass age restriction
+    }
+    return opts
 
 def main():
     TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not TOKEN:
         raise ValueError("Token bot tidak ditemukan! Atur TELEGRAM_BOT_TOKEN di environment variable.")
+    
     if not ADMIN_ID:
         logger.warning("TELEGRAM_ADMIN_ID tidak diatur. Laporan eror tidak akan dikirimkan ke admin.")
 
-    setup_youtube_cookies()
-
+    # Enhanced cookie setup dengan validasi
+    cookie_valid = setup_youtube_cookies_enhanced()
+    
     app = Application.builder().token(TOKEN).build()
     
     app.add_handler(CommandHandler("start", start))
@@ -1214,10 +1308,15 @@ def main():
     app.add_handler(CallbackQueryHandler(play_game, pattern=r'^game_play_(rock|scissors|paper)$'))
     app.add_handler(CallbackQueryHandler(handle_youtube_download_choice, pattern=r'^yt_dl\|.+'))
 
-    print(f"🤖 Bot Pulsa Net (v16.8 - Peningkatan Batas Ukuran File Unggah) sedang berjalan...")
-    print("✅ Pembaruan:")
-    print(f"   - Batas unggah file YouTube ditingkatkan menjadi {MAX_UPLOAD_FILE_SIZE_MB} MB.")
-    print("   - Pesan peringatan dan error telah disesuaikan.")
+    print(f"🤖 Bot Pulsa Net (v16.9 - Enhanced Cookie Management) sedang berjalan...")
+    if cookie_valid:
+        print("✅ YouTube Downloader: AKTIF")
+    else:
+        print("❌ YouTube Downloader: NONAKTIF (cookies invalid)")
+        logger.error("=" * 60)
+        logger.error("PERINGATAN: Bot akan tetap berjalan, tapi fitur YouTube TIDAK AKAN BEKERJA!")
+        logger.error("Segera perbaiki masalah cookies untuk mengaktifkan fitur YouTube Downloader.")
+        logger.error("=" * 60)
     
     app.run_polling()
 
