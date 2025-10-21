@@ -2,13 +2,14 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
 # Developer: frd009
-# Versi: 16.10 (Timeout & Retry Handling)
+# Versi: 16.11 (Graceful Shutdown & More Tools)
 #
-# CHANGELOG v16.10:
-# - FIX: Mengatasi error `telegram.error.TimedOut` dengan dua strategi:
-#   1. Meningkatkan batas waktu (timeout) koneksi global bot menjadi lebih toleran.
-#   2. Menambahkan mekanisme coba-ulang (retry) pada fungsi `start` untuk menangani gangguan jaringan sesaat.
-# - CHORE: Memperbarui versi bot.
+# CHANGELOG v16.11:
+# - ADD: Mekanisme Graceful Shutdown untuk menghentikan bot dengan aman (Ctrl+C).
+# - ADD: Fitur "Media Downloader" universal untuk mengunduh video/gambar dari Instagram, Twitter, TikTok, dll.
+# - ADD: Fitur "Password Generator" sebagai alat bantu keamanan.
+# - UPDATE: Merombak menu Tools untuk mengakomodasi fitur-fitur baru.
+# - CHORE: Memperbarui versi bot dan pesan startup.
 # ============================================
 
 import os
@@ -22,6 +23,9 @@ import logging
 import httpx
 import traceback
 import base64
+import signal
+import sys
+import string
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from pathlib import Path
@@ -59,6 +63,33 @@ MAX_MESSAGES_TO_DELETE_PER_BATCH = 30
 CHROME_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36"
 MAX_UPLOAD_FILE_SIZE_MB = 300 # New maximum upload size in MB
 MAX_UPLOAD_FILE_SIZE_BYTES = MAX_UPLOAD_FILE_SIZE_MB * 1024 * 1024
+
+# --- PERBAIKAN: Graceful Shutdown ---
+bot_application = None
+
+def signal_handler(sig, frame):
+    """
+    Handler untuk graceful shutdown saat Ctrl+C atau SIGTERM.
+    Memastikan bot stop dengan benar sebelum exit.
+    """
+    print("\n\n🛑 Menerima signal shutdown...")
+    print("🔄 Menghentikan bot dengan aman...")
+    
+    if bot_application:
+        try:
+            # Stop bot dengan benar
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Menggunakan bot_application.stop() dan shutdown() yang sudah ada
+                loop.create_task(bot_application.stop())
+                loop.create_task(bot_application.shutdown())
+            print("✅ Bot berhasil dihentikan dengan aman")
+        except Exception as e:
+            print(f"⚠️  Error saat shutdown: {e}")
+    
+    print("👋 Goodbye!")
+    sys.exit(0)
+# --- AKHIR PERBAIKAN ---
 
 # ==============================================================================
 # 📦 DATA PRODUK
@@ -612,7 +643,8 @@ async def show_tools_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = "<b>🛠️ Tools & Hiburan</b>\n\nPilih salah satu alat atau hiburan yang tersedia di bawah ini."
         keyboard = [
             [InlineKeyboardButton("🖼️ Buat QR Code", callback_data="ask_for_qr"), InlineKeyboardButton("💹 Kalkulator Kurs", callback_data="ask_for_currency")],
-            [InlineKeyboardButton("▶️ YouTube Downloader", callback_data="ask_for_youtube"), InlineKeyboardButton("🎮 Mini Game", callback_data="main_game")],
+            [InlineKeyboardButton("▶️ YouTube Downloader", callback_data="ask_for_youtube"), InlineKeyboardButton("🔗 Media Downloader", callback_data="ask_for_media_link")],
+            [InlineKeyboardButton("🔐 Buat Password", callback_data="gen_password"), InlineKeyboardButton("🎮 Mini Game", callback_data="main_game")],
             [InlineKeyboardButton("⬅️ Kembali ke Menu Utama", callback_data="back_to_start")]
         ]
         try:
@@ -647,6 +679,10 @@ async def prompt_for_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif action == "ask_for_youtube":
             context.user_data['state'] = 'awaiting_youtube_link'
             text = ("<b>▶️ YouTube Downloader</b>\n\nKirimkan link video YouTube yang ingin Anda unduh.")
+        elif action == "ask_for_media_link":
+            context.user_data['state'] = 'awaiting_media_link'
+            text = ("<b>🔗 Media Downloader Universal</b>\n\n"
+                    "Kirimkan link dari Instagram, Twitter, TikTok, Facebook, dll. untuk mengunduh video atau gambar.")
         elif action == "ask_for_currency":
             context.user_data['state'] = 'awaiting_currency'
             text = ("<b>💹 Kalkulator Kurs Mata Uang</b>\n\n"
@@ -1006,6 +1042,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         message_text = update.message.text
         
         phone_pattern = r'(\+?\d{1,3}[\s-]?\d[\d\s-]{7,14})'
+        url_pattern = r'https?://[^\s]+'
         
         if state == 'awaiting_number':
             numbers = re.findall(phone_pattern, message_text)
@@ -1072,6 +1109,15 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             context.user_data.pop('state', None)
             return
         
+        elif state == 'awaiting_media_link':
+            if re.search(url_pattern, message_text):
+                await handle_media_download(update, context, message_text)
+            else:
+                sent_msg = await update.message.reply_text("Link tidak valid. Pastikan Anda mengirimkan tautan yang benar.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+                await track_message(context, sent_msg)
+            context.user_data.pop('state', None)
+            return
+
         elif state == 'awaiting_currency':
             await handle_currency_conversion(update, context)
             context.user_data.pop('state', None)
@@ -1155,6 +1201,107 @@ async def play_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await send_admin_log(context, e, update, "play_game")
         await query.edit_message_text("Maaf, terjadi kesalahan pada game.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+
+# --- FITUR BARU: Password Generator ---
+async def generate_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    try:
+        await query.answer()
+        
+        length = 16
+        chars = string.ascii_letters + string.digits + string.punctuation
+        password = ''.join(random.choice(chars) for _ in range(length))
+        
+        text = (
+            f"🔐 <b>Password Baru Dibuat</b>\n\n"
+            f"Ini adalah password Anda yang aman:\n\n"
+            f"<code>{safe_html(password)}</code>\n\n"
+            f"<i>Klik pada password untuk menyalinnya. Harap simpan di tempat yang aman.</i>"
+        )
+        
+        keyboard = [
+            [InlineKeyboardButton("🔄 Buat Lagi", callback_data="gen_password")],
+            [InlineKeyboardButton("⬅️ Kembali ke Tools", callback_data="main_tools")]
+        ]
+        
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+
+    except Exception as e:
+        await send_admin_log(context, e, update, "generate_password")
+        await query.edit_message_text("Maaf, terjadi kesalahan saat membuat password.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+
+# --- FITUR BARU: Media Downloader ---
+async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str):
+    status_msg = None
+    file_path = None
+    try:
+        status_msg = await update.message.reply_text("📥 <b>Mengunduh media...</b> Ini mungkin akan memakan waktu.", parse_mode=ParseMode.HTML)
+        await track_message(context, status_msg)
+
+        file_path_template = f"media_{update.effective_message.id}.%(ext)s"
+        ydl_opts = get_ytdlp_options()
+        ydl_opts['outtmpl'] = file_path_template
+        ydl_opts['max_filesize'] = MAX_UPLOAD_FILE_SIZE_BYTES
+
+        info_dict = await asyncio.to_thread(run_yt_dlp_sync, ydl_opts, url, download=True)
+        
+        file_path = info_dict.get('_filename')
+        if not file_path or not os.path.exists(file_path):
+            # Fallback jika nama file tidak ditemukan
+            potential_files = [f for f in os.listdir('.') if f.startswith(f"media_{update.effective_message.id}")]
+            if not potential_files:
+                raise ValueError("File tidak ditemukan setelah diunduh oleh yt-dlp.")
+            file_path = potential_files[0]
+            
+        title = info_dict.get('title', 'Media')
+        uploader = info_dict.get('uploader', 'Tidak diketahui')
+        caption = f"<b>{safe_html(title)}</b>\n<i>oleh {safe_html(uploader)}</i>\n\nDiunduh dengan @{context.bot.username}"
+
+        await status_msg.edit_text("📤 <b>Mengirim file...</b>", parse_mode=ParseMode.HTML)
+
+        ext = Path(file_path).suffix.lower()
+        image_exts = ['.jpg', '.jpeg', '.png', '.webp']
+        
+        with open(file_path, 'rb') as f:
+            if ext in image_exts:
+                await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.UPLOAD_PHOTO)
+                sent_file = await context.bot.send_photo(update.effective_chat.id, photo=f, caption=caption, parse_mode=ParseMode.HTML)
+            else:
+                await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.UPLOAD_VIDEO)
+                sent_file = await context.bot.send_video(update.effective_chat.id, video=f, caption=caption, parse_mode=ParseMode.HTML)
+        
+        await track_message(context, sent_file)
+        await status_msg.delete()
+
+        keyboard_next = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔗 Unduh Media Lain", callback_data="ask_for_media_link")],
+            [InlineKeyboardButton("⬅️ Kembali ke Tools", callback_data="main_tools")]
+        ])
+        next_msg = await context.bot.send_message(update.effective_chat.id, "✅ Unduhan selesai.", reply_markup=keyboard_next)
+        await track_message(context, next_msg)
+
+    except yt_dlp.utils.DownloadError as e:
+        error_str = str(e).lower()
+        reply_text = "Maaf, terjadi kesalahan saat mengunduh media."
+        if 'private' in error_str or 'login required' in error_str:
+            reply_text = "❌ Gagal, konten ini bersifat pribadi atau memerlukan login."
+        elif 'unavailable' in error_str:
+            reply_text = "❌ Gagal, konten ini tidak tersedia atau telah dihapus."
+        
+        await send_admin_log(context, e, update, "handle_media_download")
+        if status_msg:
+            await status_msg.edit_text(reply_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+            
+    except Exception as e:
+        await send_admin_log(context, e, update, "handle_media_download")
+        if status_msg:
+            await status_msg.edit_text("Maaf, terjadi kesalahan teknis yang tidak terduga.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+    finally:
+        if file_path and os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except Exception as e:
+                logger.error(f"Gagal menghapus file media {file_path}: {e}")
 
 # ==============================================================================
 # 🚀 FUNGSI UTAMA & FUNGSI BARU UNTUK COOKIES
@@ -1302,6 +1449,8 @@ def get_ytdlp_options():
     return opts
 
 def main():
+    global bot_application
+
     TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not TOKEN:
         raise ValueError("Token bot tidak ditemukan! Atur TELEGRAM_BOT_TOKEN di environment variable.")
@@ -1311,28 +1460,36 @@ def main():
 
     # Enhanced cookie setup dengan validasi
     cookie_valid = setup_youtube_cookies_enhanced()
-    
-    # --- PERBAIKAN: Menambahkan konfigurasi timeout global ---
+
+    # --- PERBAIKAN: Graceful Shutdown & Timeout ---
+    # Register signal handlers
+    signal.signal(signal.SIGINT, signal_handler)   # Ctrl+C
+    signal.signal(signal.SIGTERM, signal_handler)  # Kill signal
+    print("🔧 Registering shutdown handlers...")
+
     timeout_config = HTTPXRequest(connect_timeout=10.0, read_timeout=20.0, write_timeout=20.0)
-    app = Application.builder().token(TOKEN).request(timeout_config).build()
+    bot_application = Application.builder().token(TOKEN).request(timeout_config).build()
     # --- AKHIR PERBAIKAN ---
     
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(start, pattern='^back_to_start$'))
-    app.add_handler(CallbackQueryHandler(clear_history, pattern='^clear_history$'))
-    app.add_handler(CallbackQueryHandler(show_bantuan, pattern='^main_bantuan$'))
-    app.add_handler(CallbackQueryHandler(show_operator_menu, pattern=r'^main_(paket|pulsa)$'))
-    app.add_handler(CallbackQueryHandler(show_tools_menu, pattern='^main_tools$'))
-    app.add_handler(CallbackQueryHandler(show_xl_paket_submenu, pattern=r'^list_paket_xl$'))
-    app.add_handler(CallbackQueryHandler(show_product_list, pattern=r'^list_(paket|pulsa)_.+$'))
-    app.add_handler(CallbackQueryHandler(show_package_details, pattern=r'^pkg_\d+_[a-z0-9_]+$'))
-    app.add_handler(CallbackQueryHandler(prompt_for_action, pattern=r'^ask_for_(number|qr|youtube|currency)$'))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
-    app.add_handler(CallbackQueryHandler(show_game_menu, pattern='^main_game$'))
-    app.add_handler(CallbackQueryHandler(play_game, pattern=r'^game_play_(rock|scissors|paper)$'))
-    app.add_handler(CallbackQueryHandler(handle_youtube_download_choice, pattern=r'^yt_dl\|.+'))
+    # Tambahkan semua handler ke bot_application
+    bot_application.add_handler(CommandHandler("start", start))
+    bot_application.add_handler(CallbackQueryHandler(start, pattern='^back_to_start$'))
+    bot_application.add_handler(CallbackQueryHandler(clear_history, pattern='^clear_history$'))
+    bot_application.add_handler(CallbackQueryHandler(show_bantuan, pattern='^main_bantuan$'))
+    bot_application.add_handler(CallbackQueryHandler(show_operator_menu, pattern=r'^main_(paket|pulsa)$'))
+    bot_application.add_handler(CallbackQueryHandler(show_tools_menu, pattern='^main_tools$'))
+    bot_application.add_handler(CallbackQueryHandler(show_xl_paket_submenu, pattern=r'^list_paket_xl$'))
+    bot_application.add_handler(CallbackQueryHandler(show_product_list, pattern=r'^list_(paket|pulsa)_.+$'))
+    bot_application.add_handler(CallbackQueryHandler(show_package_details, pattern=r'^pkg_\d+_[a-z0-9_]+$'))
+    bot_application.add_handler(CallbackQueryHandler(prompt_for_action, pattern=r'^ask_for_(number|qr|youtube|currency|media_link)$'))
+    bot_application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
+    bot_application.add_handler(CallbackQueryHandler(show_game_menu, pattern='^main_game$'))
+    bot_application.add_handler(CallbackQueryHandler(play_game, pattern=r'^game_play_(rock|scissors|paper)$'))
+    bot_application.add_handler(CallbackQueryHandler(handle_youtube_download_choice, pattern=r'^yt_dl\|.+'))
+    bot_application.add_handler(CallbackQueryHandler(generate_password, pattern='^gen_password$'))
 
-    print(f"🤖 Bot Pulsa Net (v16.10 - Timeout & Retry Handling) sedang berjalan...")
+
+    print(f"🤖 Bot Pulsa Net (v16.11 - Graceful Shutdown & More Tools) sedang berjalan...")
     if cookie_valid:
         print("✅ YouTube Downloader: AKTIF")
     else:
@@ -1341,8 +1498,12 @@ def main():
         logger.error("PERINGATAN: Bot akan tetap berjalan, tapi fitur YouTube TIDAK AKAN BEKERJA!")
         logger.error("Segera perbaiki masalah cookies untuk mengaktifkan fitur YouTube Downloader.")
         logger.error("=" * 60)
-    
-    app.run_polling()
+    print("💡 Tekan Ctrl+C untuk shutdown dengan aman")
+    print("=" * 60)
+
+    # Menjalankan bot dengan error handling
+    bot_application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+
 
 if __name__ == "__main__":
     main()
