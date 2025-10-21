@@ -2,14 +2,17 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
 # Developer: frd009
-# Versi: 16.12 (Robust Media Downloader)
+# Versi: 16.13 (Professional Error Handling)
 #
-# CHANGELOG v16.12:
-# - FIX: Mengatasi `ExtractorError` saat link tidak mengandung media (misal, tweet teks saja).
-#   Bot sekarang akan memberikan pesan yang jelas kepada pengguna.
-# - FIX: Mengatasi `ValueError: File tidak ditemukan` dengan menyempurnakan logika pencarian file
-#   setelah unduhan selesai, membuatnya lebih andal.
-# - CHORE: Memperbarui penanganan error di `handle_media_download` agar lebih spesifik.
+# CHANGELOG v16.13:
+# - FIX (PROFESSIONAL): Merombak total penanganan error di `handle_media_download`.
+#   - Secara spesifik menangani `DownloadError` dan `ExtractorError` dari yt-dlp.
+#   - Memberikan pesan error yang informatif dan relevan kepada pengguna jika link tidak
+#     mengandung media, bersifat pribadi, atau tidak tersedia.
+#   - Mencegah `ValueError: File tidak ditemukan` dengan memastikan logika pencarian file
+#     hanya berjalan setelah unduhan dipastikan berhasil.
+# - UPDATE: Meningkatkan keandalan pencarian file dengan menggunakan `requested_downloads`
+#   dari metadata yt-dlp sebagai prioritas utama.
 # ============================================
 
 import os
@@ -1155,7 +1158,7 @@ async def show_game_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = [[InlineKeyboardButton("Batu 🗿", callback_data="game_play_rock"),
                      InlineKeyboardButton("Gunting ✂️", callback_data="game_play_scissors"),
                      InlineKeyboardButton("Kertas 📄", callback_data="game_play_paper")],
-                    [InlineKeyboardButton("⬅️ Kembali ke Tools", callback_data="main_tools")]]
+                    [InlineKeyboardButton("⬅️ Kembali ke Menu Tools", callback_data="main_tools")]]
         try:
             await query.edit_message_text("<b>🎮 Game Batu-Gunting-Kertas</b>\n\nAyo bermain! Pilih jagoanmu:",
                                           reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
@@ -1230,7 +1233,7 @@ async def generate_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_admin_log(context, e, update, "generate_password")
         await query.edit_message_text("Maaf, terjadi kesalahan saat membuat password.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
 
-# --- FITUR BARU: Media Downloader ---
+# --- FITUR BARU & PERBAIKAN: Media Downloader ---
 async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str):
     status_msg = None
     file_path = None
@@ -1242,19 +1245,47 @@ async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TY
         ydl_opts = get_ytdlp_options()
         ydl_opts['outtmpl'] = file_path_template
         ydl_opts['max_filesize'] = MAX_UPLOAD_FILE_SIZE_BYTES
-
-        info_dict = await asyncio.to_thread(run_yt_dlp_sync, ydl_opts, url, download=True)
         
-        # --- PERBAIKAN: Logika pencarian file yang lebih andal ---
-        file_path = info_dict.get('filepath') or info_dict.get('_filename')
+        # --- PERBAIKAN PROFESIONAL: Isolasi proses unduh dan tangani error secara spesifik ---
+        info_dict = None
+        try:
+            info_dict = await asyncio.to_thread(run_yt_dlp_sync, ydl_opts, url, download=True)
+            # Kasus langka di mana yt-dlp tidak melempar error tapi tidak ada media
+            if not info_dict:
+                 raise yt_dlp.utils.DownloadError("Proses unduh tidak mengembalikan informasi.")
+
+        except (yt_dlp.utils.DownloadError, yt_dlp.utils.ExtractorError) as e:
+            error_str = str(e).lower()
+            reply_text = "Maaf, terjadi kesalahan yang tidak diketahui saat mengunduh."
+            
+            # Memberikan pesan informatif kepada pengguna
+            if 'no video could be found' in error_str or 'no formats' in error_str or 'unsupported url' in error_str:
+                reply_text = "❌ <b>Gagal!</b> Link ini sepertinya tidak mengandung media (video/gambar) yang dapat diunduh."
+            elif 'private' in error_str or 'login required' in error_str:
+                reply_text = "❌ <b>Gagal!</b> Konten ini bersifat pribadi atau memerlukan login."
+            elif 'unavailable' in error_str:
+                reply_text = "❌ <b>Gagal!</b> Konten ini tidak tersedia atau telah dihapus."
+            
+            logger.warning(f"yt-dlp error for URL {url}: {e}")
+            await send_admin_log(context, e, update, "handle_media_download (yt-dlp)")
+            if status_msg:
+                await status_msg.edit_text(reply_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+            return # Sangat penting: Hentikan eksekusi di sini agar tidak lanjut ke pencarian file
+
+        # --- PERBAIKAN PROFESIONAL: Logika pencarian file yang lebih andal ---
+        # Kode ini hanya akan berjalan jika tidak ada error dari blok try-except di atas
+        file_path = (info_dict.get('requested_downloads') and info_dict['requested_downloads'][0].get('filepath')) \
+                    or info_dict.get('filepath') \
+                    or info_dict.get('_filename')
+
         if not file_path or not os.path.exists(file_path):
-            # Fallback jika nama file tidak ditemukan
+            # Fallback terakhir jika path utama gagal (seharusnya jarang terjadi)
             potential_files = [f for f in os.listdir('.') if f.startswith(f"media_{update.effective_message.id}")]
             if not potential_files:
-                raise ValueError("File tidak ditemukan setelah diunduh oleh yt-dlp.")
+                raise ValueError("CRITICAL: File tidak ditemukan setelah unduhan yt-dlp dipastikan berhasil.")
             file_path = potential_files[0]
         # --- AKHIR PERBAIKAN ---
-            
+
         title = info_dict.get('title', 'Media')
         uploader = info_dict.get('uploader', 'Tidak diketahui')
         caption = f"<b>{safe_html(title)}</b>\n<i>oleh {safe_html(uploader)}</i>\n\nDiunduh dengan @{context.bot.username}"
@@ -1281,35 +1312,12 @@ async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TY
         ])
         next_msg = await context.bot.send_message(update.effective_chat.id, "✅ Unduhan selesai.", reply_markup=keyboard_next)
         await track_message(context, next_msg)
-
-    # --- PERBAIKAN: Penanganan error yang lebih spesifik ---
-    except yt_dlp.utils.ExtractorError as e:
-        error_str = str(e).lower()
-        reply_text = "❌ <b>Gagal!</b> Link ini tidak mengandung video atau gambar yang bisa diunduh."
-        if "no video could be found" in error_str:
-            reply_text = "❌ <b>Gagal!</b> Tidak ada video yang dapat ditemukan di link ini."
-        
-        logger.warning(f"ExtractorError for URL {url}: {e}")
-        if status_msg:
-            await status_msg.edit_text(reply_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-
-    except yt_dlp.utils.DownloadError as e:
-        error_str = str(e).lower()
-        reply_text = "Maaf, terjadi kesalahan saat mengunduh media."
-        if 'private' in error_str or 'login required' in error_str:
-            reply_text = "❌ Gagal, konten ini bersifat pribadi atau memerlukan login."
-        elif 'unavailable' in error_str:
-            reply_text = "❌ Gagal, konten ini tidak tersedia atau telah dihapus."
-        
-        await send_admin_log(context, e, update, "handle_media_download")
-        if status_msg:
-            await status_msg.edit_text(reply_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-    # --- AKHIR PERBAIKAN ---
             
     except Exception as e:
-        await send_admin_log(context, e, update, "handle_media_download")
+        # Menangkap semua error lain yang tidak terduga
+        await send_admin_log(context, e, update, "handle_media_download (General)")
         if status_msg:
-            await status_msg.edit_text("Maaf, terjadi kesalahan teknis yang tidak terduga.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+            await status_msg.edit_text("Maaf, terjadi kesalahan teknis yang tidak terduga. Admin telah diberitahu.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
     finally:
         if file_path and os.path.exists(file_path):
             try:
@@ -1334,8 +1342,12 @@ def validate_youtube_cookies(cookie_file):
         with open(cookie_file, 'r') as f:
             content = f.read()
         
+        if not content.strip():
+            logger.error("File cookie kosong!")
+            return False
+            
         # Cek format Netscape
-        if not content.startswith('# Netscape HTTP Cookie File'):
+        if '# Netscape HTTP Cookie File' not in content:
             logger.warning("⚠️ Cookie file bukan format Netscape!")
             logger.warning("Pastikan Anda export dengan extension/tool yang benar")
         
@@ -1410,7 +1422,7 @@ def setup_youtube_cookies_enhanced():
     
     if not cookie_data_base64:
         logger.error("❌ YOUTUBE_COOKIES_BASE64 tidak ditemukan!")
-        logger.error("Fitur YouTube Downloader tidak akan berfungsi.")
+        logger.error("Fitur Downloader tidak akan berfungsi.")
         logger.error("Panduan: Export cookies dari browser → convert ke base64 → set environment variable")
         return False
     
@@ -1503,7 +1515,7 @@ def main():
     bot_application.add_handler(CallbackQueryHandler(generate_password, pattern='^gen_password$'))
 
 
-    print(f"🤖 Bot Pulsa Net (v16.12 - Robust Media Downloader) sedang berjalan...")
+    print(f"🤖 Bot Pulsa Net (v16.13 - Professional Error Handling) sedang berjalan...")
     if cookie_valid:
         print("✅ YouTube & Media Downloader: AKTIF")
     else:
