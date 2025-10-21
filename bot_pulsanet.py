@@ -2,15 +2,13 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
 # Developer: frd009
-# Versi: 16.9 (Enhanced Cookie Management & YouTube Error Handling)
+# Versi: 16.10 (Timeout & Retry Handling)
 #
-# CHANGELOG v16.9:
-# - ADD: Fungsi setup_youtube_cookies_enhanced untuk validasi mendalam saat startup.
-# - ADD: Fungsi validate_youtube_cookies untuk memeriksa format, kelengkapan, dan tanggal kedaluwarsa cookie.
-# - ADD: Fungsi get_ytdlp_options untuk sentralisasi konfigurasi yt-dlp yang lebih kuat.
-# - UPDATE: Handler YouTube sekarang mendeteksi error cookie secara spesifik dan memberikan pesan yang lebih informatif kepada pengguna dan admin.
-# - UPDATE: Meningkatkan opsi yt-dlp dengan retry yang lebih tinggi dan bypass untuk beberapa batasan.
-# - CHORE: Memperbarui versi bot dan log startup.
+# CHANGELOG v16.10:
+# - FIX: Mengatasi error `telegram.error.TimedOut` dengan dua strategi:
+#   1. Meningkatkan batas waktu (timeout) koneksi global bot menjadi lebih toleran.
+#   2. Menambahkan mekanisme coba-ulang (retry) pada fungsi `start` untuk menangani gangguan jaringan sesaat.
+# - CHORE: Memperbarui versi bot.
 # ============================================
 
 import os
@@ -39,7 +37,8 @@ import pycountry
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.constants import ChatAction, ParseMode
-from telegram.error import TelegramError, RetryAfter, BadRequest
+from telegram.error import TelegramError, RetryAfter, BadRequest, TimedOut
+from telegram.request import HTTPXRequest
 
 # Konfigurasi logging
 logging.basicConfig(
@@ -432,8 +431,30 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     raise e
         else:
-            sent_message = await context.bot.send_message(chat_id=chat_id, text=main_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+            # --- PERBAIKAN: Menambahkan Retry untuk TimedOut Error ---
+            sent_message = None
+            for attempt in range(3): # Coba hingga 3 kali
+                try:
+                    sent_message = await context.bot.send_message(
+                        chat_id=chat_id,
+                        text=main_text,
+                        reply_markup=InlineKeyboardMarkup(keyboard),
+                        parse_mode=ParseMode.HTML
+                    )
+                    break # Berhasil, keluar dari loop
+                except TimedOut:
+                    logger.warning(f"Attempt {attempt + 1} to send start message timed out. Retrying in 2 seconds...")
+                    if attempt < 2: # Jangan menunggu pada percobaan terakhir
+                        await asyncio.sleep(2)
+                except Exception: # Tangkap error lain dan langsung hentikan
+                    raise 
+
+            if not sent_message:
+                # Jika semua percobaan gagal, lempar error agar ditangani oleh blok exception di luar
+                raise TimedOut("Gagal mengirim pesan setelah 3 kali percobaan.")
+
             await track_message(context, sent_message)
+            # --- AKHIR PERBAIKAN ---
     except Exception as e:
         await send_admin_log(context, e, update, "start")
         try:
@@ -1291,7 +1312,10 @@ def main():
     # Enhanced cookie setup dengan validasi
     cookie_valid = setup_youtube_cookies_enhanced()
     
-    app = Application.builder().token(TOKEN).build()
+    # --- PERBAIKAN: Menambahkan konfigurasi timeout global ---
+    timeout_config = HTTPXRequest(connect_timeout=10.0, read_timeout=20.0, write_timeout=20.0)
+    app = Application.builder().token(TOKEN).request(timeout_config).build()
+    # --- AKHIR PERBAIKAN ---
     
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(start, pattern='^back_to_start$'))
@@ -1308,7 +1332,7 @@ def main():
     app.add_handler(CallbackQueryHandler(play_game, pattern=r'^game_play_(rock|scissors|paper)$'))
     app.add_handler(CallbackQueryHandler(handle_youtube_download_choice, pattern=r'^yt_dl\|.+'))
 
-    print(f"🤖 Bot Pulsa Net (v16.9 - Enhanced Cookie Management) sedang berjalan...")
+    print(f"🤖 Bot Pulsa Net (v16.10 - Timeout & Retry Handling) sedang berjalan...")
     if cookie_valid:
         print("✅ YouTube Downloader: AKTIF")
     else:
