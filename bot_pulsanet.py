@@ -2,7 +2,14 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
 # Developer: frd009
-# Versi: 16.15 (Dual Cookie System & Robust Download Logic)
+# Versi: 16.16 (Enhanced Admin Error Logging)
+#
+# CHANGELOG v16.16:
+# - UPDATE (PROFESSIONAL): Memastikan SEMUA `DownloadError` (bukan hanya error
+#   autentikasi) dari yt-dlp di dalam `handle_media_download`
+#   dikirimkan sebagai log ke Admin, sesuai permintaan.
+# - (Internal): Tetap mempertahankan perbaikan v16.15 untuk `ValueError`
+#   dan sistem `Dual Cookie`.
 #
 # CHANGELOG v16.15:
 # - ADD (PROFESSIONAL): Menambahkan sistem dua-cookie. Bot sekarang mendukung
@@ -1269,6 +1276,7 @@ async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TY
         except (yt_dlp.utils.DownloadError, yt_dlp.utils.ExtractorError) as e:
             error_str = str(e).lower()
             reply_text = "Maaf, terjadi kesalahan yang tidak diketahui saat mengunduh."
+            admin_log_sent = False # <-- Penanda apakah log sudah dikirim
             
             # --- FIX: Penanganan error cookie/login yang lebih spesifik ---
             if ('unsupported url' in error_str and 'login' in url) or \
@@ -1279,6 +1287,7 @@ async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TY
                 admin_alert = f"Gagal mengunduh {url} karena masalah otentikasi. " \
                               f"Pastikan GENERIC_COOKIES_BASE64 sudah diatur dan valid untuk situs ini. Error: {e}"
                 await send_admin_log(context, e, update, "handle_media_download (Auth Error)", custom_message=admin_alert)
+                admin_log_sent = True # <-- Tandai log sudah dikirim
             
             elif 'no video could be found' in error_str or 'no formats' in error_str or 'is not a valid URL' in error_str:
                 reply_text = "❌ <b>Gagal!</b> Link ini sepertinya tidak mengandung media (video/gambar) yang dapat diunduh."
@@ -1286,6 +1295,14 @@ async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TY
                 reply_text = "❌ <b>Gagal!</b> Konten ini tidak tersedia atau telah dihapus."
             
             logger.warning(f"yt-dlp error for URL {url}: {e}")
+
+            # --- FIX v16.16: Kirim *semua* error unduhan ke admin ---
+            # Jika log belum dikirim oleh handler spesifik (spt error Auth)
+            if not admin_log_sent:
+                admin_alert = f"Gagal mengunduh {url}. Error: {e}"
+                await send_admin_log(context, e, update, "handle_media_download (DownloadError)", custom_message=admin_alert)
+            # --- AKHIR FIX v16.16 ---
+
             if status_msg:
                 await status_msg.edit_text(reply_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
             return
@@ -1596,7 +1613,7 @@ def main():
     bot_application.add_handler(CallbackQueryHandler(generate_password, pattern='^gen_password$'))
 
 
-    print(f"🤖 Bot Pulsa Net (v16.15 - Dual Cookie System) sedang berjalan...")
+    print(f"🤖 Bot Pulsa Net (v16.16 - Enhanced Admin Error Logging) sedang berjalan...")
     
     # --- Laporan Status Cookie Baru ---
     if youtube_valid:
