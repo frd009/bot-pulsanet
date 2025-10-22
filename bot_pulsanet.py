@@ -2,24 +2,16 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
 # Developer: frd009
-# Versi: 16.17 (Professional Photo & Album Downloader)
+# Versi: 16.18 (Universal Photo & Video Downloader)
 #
-# CHANGELOG v16.17:
-# - ADD (PROFESSIONAL): Logika caption yang disempurnakan. Jika mengunduh
-#   dari album/carousel, bot akan mencoba menggunakan judul individual
-#   file (jika ada) dan merujuk ke judul album utama.
-# - FIX (PROFESSIONAL): Memperbaiki logika deteksi file secara total untuk
-#   menangani postingan multi-foto (carousel/album) dengan andal.
-# - FIX (PROFESSIONAL): Logika sekarang memeriksa `_filename` dan `filepath`
-#   di *setiap* item di dalam `info_dict['entries']`, memastikan
-#   *semua* foto/video dari carousel ditemukan dan dikirim,
-#   tidak hanya file pertama.
-#
-# CHANGELOG v16.16:
-# - UPDATE (PROFESSIONAL): Memastikan SEMUA `DownloadError` (bukan hanya error
-#   autentikasi) dari yt-dlp di dalam `handle_media_download`
-#   dikirimkan sebagai log ke Admin, sesuai permintaan.
-# ... (Changelog v16.15 dipertahankan)
+# CHANGELOG v16.18:
+# - FIX (PROFESSIONAL): Mengoptimalkan opsi yt-dlp untuk Media Downloader
+#   generik. Menambahkan `'format': 'best'` secara eksplisit untuk memastikan
+#   yt-dlp mengunduh media terbaik yang tersedia, baik itu foto
+#   maupun video, sehingga mengurangi error 'No video formats found'
+#   pada postingan yang hanya berisi gambar (misalnya Instagram).
+# - NOTE: Logika pengiriman (send_photo/send_video) sudah
+#   mendukung foto, perbaikan ini fokus pada keberhasilan proses unduh.
 # ============================================
 
 import os
@@ -71,7 +63,7 @@ ADMIN_ID = os.environ.get("TELEGRAM_ADMIN_ID")
 MAX_MESSAGES_TO_TRACK = 50
 MAX_MESSAGES_TO_DELETE_PER_BATCH = 30
 CHROME_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36"
-MAX_UPLOAD_FILE_SIZE_MB = 300 # New maximum upload size in MB
+MAX_UPLOAD_FILE_SIZE_MB = 300
 MAX_UPLOAD_FILE_SIZE_BYTES = MAX_UPLOAD_FILE_SIZE_MB * 1024 * 1024
 
 # --- File Cookie ---
@@ -91,10 +83,8 @@ def signal_handler(sig, frame):
     
     if bot_application:
         try:
-            # Stop bot dengan benar
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                # Menggunakan bot_application.stop() dan shutdown() yang sudah ada
                 loop.create_task(bot_application.stop())
                 loop.create_task(bot_application.shutdown())
             print("✅ Bot berhasil dihentikan dengan aman")
@@ -476,9 +466,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     raise e
         else:
-            # --- Retry untuk TimedOut Error ---
             sent_message = None
-            for attempt in range(3): # Coba hingga 3 kali
+            for attempt in range(3):
                 try:
                     sent_message = await context.bot.send_message(
                         chat_id=chat_id,
@@ -486,20 +475,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         reply_markup=InlineKeyboardMarkup(keyboard),
                         parse_mode=ParseMode.HTML
                     )
-                    break # Berhasil, keluar dari loop
+                    break
                 except TimedOut:
                     logger.warning(f"Attempt {attempt + 1} to send start message timed out. Retrying in 2 seconds...")
-                    if attempt < 2: # Jangan menunggu pada percobaan terakhir
+                    if attempt < 2:
                         await asyncio.sleep(2)
-                except Exception: # Tangkap error lain dan langsung hentikan
+                except Exception:
                     raise 
 
             if not sent_message:
-                # Jika semua percobaan gagal, lempar error agar ditangani oleh blok exception di luar
                 raise TimedOut("Gagal mengirim pesan setelah 3 kali percobaan.")
 
             await track_message(context, sent_message)
-            # --- AKHIR Retry ---
     except Exception as e:
         await send_admin_log(context, e, update, "start")
         try:
@@ -808,9 +795,6 @@ async def handle_currency_conversion(update: Update, context: ContextTypes.DEFAU
                     logger.error(f"Failed to send error message in handle_currency_conversion error handler: {e_inner}")
 
 async def show_youtube_quality_options(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str):
-    """
-    Enhanced version dengan cookie error detection yang lebih baik.
-    """
     status_msg = None
     try:
         status_msg = await context.bot.send_message(
@@ -820,7 +804,6 @@ async def show_youtube_quality_options(update: Update, context: ContextTypes.DEF
         )
         await track_message(context, status_msg)
         
-        # --- FIX: Pass URL to get_ytdlp_options ---
         ydl_opts = get_ytdlp_options(url=url)
         
         try:
@@ -828,7 +811,6 @@ async def show_youtube_quality_options(update: Update, context: ContextTypes.DEF
         except yt_dlp.utils.DownloadError as e:
             error_str = str(e).lower()
             
-            # Deteksi berbagai jenis cookie error
             cookie_errors = [
                 'sign in to confirm', 'no suitable proxies', '410 gone',
                 'unable to extract', 'login required', 'this video requires payment',
@@ -857,10 +839,8 @@ async def show_youtube_quality_options(update: Update, context: ContextTypes.DEF
                 await status_msg.edit_text(user_message, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
                 return
             
-            # Error lainnya
             raise e
 
-        # --- LOGIKA LAMA UNTUK MENAMPILKAN OPSI KUALITAS ---
         video_id, title, formats = info_dict.get('id', ''), info_dict.get('title', 'Video'), info_dict.get('formats', [])
         keyboard, video_formats = [], []
         
@@ -898,7 +878,6 @@ async def show_youtube_quality_options(update: Update, context: ContextTypes.DEF
             reply_markup=InlineKeyboardMarkup(keyboard), 
             parse_mode=ParseMode.HTML
         )
-        # --- AKHIR LOGIKA LAMA ---
 
     except Exception as e:
         await send_admin_log(context, e, update, "show_youtube_quality_options_enhanced")
@@ -933,7 +912,6 @@ async def handle_youtube_download_choice(update: Update, context: ContextTypes.D
 
         file_path_template = f"{video_id}_{format_id}.%(ext)s"
         
-        # --- FIX: Pass URL to get_ytdlp_options ---
         ydl_opts = get_ytdlp_options(url=url) 
         ydl_opts['outtmpl'] = file_path_template
         ydl_opts['max_filesize'] = MAX_UPLOAD_FILE_SIZE_BYTES
@@ -942,7 +920,7 @@ async def handle_youtube_download_choice(update: Update, context: ContextTypes.D
             ydl_opts['format'] = f"{format_id}+bestaudio/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
             ydl_opts['postprocessors'] = [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}]
             action = ChatAction.UPLOAD_VIDEO
-        else: # is_audio
+        else:
             ydl_opts['format'] = f"{format_id}/bestaudio/best"
             ydl_opts['postprocessors'] = [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'm4a', 'preferredquality': '192'}]
             action = ChatAction.UPLOAD_DOCUMENT
@@ -1219,7 +1197,6 @@ async def play_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_admin_log(context, e, update, "play_game")
         await query.edit_message_text("Maaf, terjadi kesalahan pada game.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
 
-# --- FITUR BARU: Password Generator ---
 async def generate_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     try:
@@ -1247,17 +1224,15 @@ async def generate_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_admin_log(context, e, update, "generate_password")
         await query.edit_message_text("Maaf, terjadi kesalahan saat membuat password.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
 
-# --- FITUR BARU & PERBAIKAN: Media Downloader ---
 async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str):
     status_msg = None
-    downloaded_files = [] # Untuk melacak semua file yang diunduh
+    downloaded_files = []
     try:
         status_msg = await update.message.reply_text("📥 <b>Mengunduh media...</b> Ini mungkin akan memakan waktu.", parse_mode=ParseMode.HTML)
         await track_message(context, status_msg)
 
         file_path_template = f"media_{update.effective_message.id}_%(id)s.%(ext)s"
         
-        # --- FIX: Pass URL to get_ytdlp_options ---
         ydl_opts = get_ytdlp_options(url=url)
         ydl_opts['outtmpl'] = file_path_template
         ydl_opts['max_filesize'] = MAX_UPLOAD_FILE_SIZE_BYTES
@@ -1271,21 +1246,9 @@ async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TY
         except (yt_dlp.utils.DownloadError, yt_dlp.utils.ExtractorError) as e:
             error_str = str(e).lower()
             reply_text = "Maaf, terjadi kesalahan yang tidak diketahui saat mengunduh."
-            admin_log_sent = False 
+            admin_log_sent = False
             
-            # --- START PERBAIKAN: Penanganan error yang lebih spesifik ---
-            if '[instagram]' in error_str and 'no video formats found' in error_str:
-                reply_text = (
-                    "❌ <b>Gagal Mengunduh.</b>\n\n"
-                    "Postingan ini sepertinya tidak mengandung video, mungkin hanya foto. Bot ini sedang difokuskan untuk mengunduh video dari tautan media umum.\n\n"
-                    "Penyebab lain bisa jadi karena postingan ini privat atau Instagram baru saja mengubah sistemnya."
-                )
-                admin_alert = f"Gagal mengunduh dari Instagram ({url}) karena 'No video formats found'. Kemungkinan ini adalah postingan foto, privat, atau extractor yt-dlp perlu diperbarui."
-                await send_admin_log(context, e, update, "handle_media_download (Instagram No Video)", custom_message=admin_alert)
-                admin_log_sent = True
-            # --- AKHIR PERBAIKAN ---
-
-            elif ('unsupported url' in error_str and 'login' in url) or \
+            if ('unsupported url' in error_str and 'login' in url) or \
                ('this content is only available for registered users' in error_str) or \
                ('private' in error_str or 'login required' in error_str):
                 reply_text = "❌ <b>Gagal!</b> Konten ini bersifat pribadi atau memerlukan login.\n\n" \
@@ -1295,8 +1258,8 @@ async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TY
                 await send_admin_log(context, e, update, "handle_media_download (Auth Error)", custom_message=admin_alert)
                 admin_log_sent = True
             
-            elif 'no video could be found' in error_str or 'no formats' in error_str or 'is not a valid URL' in error_str:
-                reply_text = "❌ <b>Gagal!</b> Link ini sepertinya tidak mengandung media (video/gambar) yang dapat diunduh."
+            elif 'no video could be found' in error_str or 'no formats' in error_str or 'is not a valid url' in error_str:
+                reply_text = "❌ <b>Gagal!</b> Link ini sepertinya tidak mengandung media (video/gambar) yang dapat diunduh, atau platformnya tidak didukung."
             elif 'unavailable' in error_str:
                 reply_text = "❌ <b>Gagal!</b> Konten ini tidak tersedia atau telah dihapus."
             
@@ -1310,62 +1273,47 @@ async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TY
                 await status_msg.edit_text(reply_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
             return
 
-        # --- START FIX v16.17: Logika pengambilan file yang lebih profesional ---
         files_to_process = []
         
-        # 1. Coba 'requested_downloads' dulu (paling ideal)
         if info_dict.get('requested_downloads'):
             files_to_process = info_dict['requested_downloads']
-
-        # 2. Jika tidak ada, cek 'entries' (carousel/album)
         elif info_dict.get('entries'):
             await status_msg.edit_text(f"📥 <b>Album/Carousel terdeteksi.</b> Mengunduh {len(info_dict['entries'])} file...", parse_mode=ParseMode.HTML)
-            # Ambil semua entry yang *memiliki* path file (baik 'filepath' atau '_filename')
             files_to_process = [
                 entry for entry in info_dict.get('entries', []) 
                 if entry and (entry.get('filepath') or entry.get('_filename'))
             ]
-
-        # 3. Jika bukan 'entries', pasti file tunggal. Cek path di info_dict utama.
         elif info_dict.get('filepath') or info_dict.get('_filename'):
-            # Jika _filename ada tapi filepath tidak, salin
             if info_dict.get('_filename') and not info_dict.get('filepath'):
                 info_dict['filepath'] = info_dict.get('_filename')
             files_to_process = [info_dict]
 
-        # 4. Jika masih kosong, baru angkat error
         if not files_to_process:
             logger.warning(f"info_dict structure keys for {url}: {list(info_dict.keys())}")
             logger.warning(f"info_dict 'requested_downloads' content: {info_dict.get('requested_downloads')}")
             raise ValueError("Tidak ada file yang berhasil diunduh dari metadata yt-dlp. (files_to_process empty)")
-        # --- END FIX v16.17 ---
 
         await status_msg.edit_text(f"📤 <b>Mengirim {len(files_to_process)} file...</b>", parse_mode=ParseMode.HTML)
         
         for i, file_info in enumerate(files_to_process):
-            # --- FIX v16.17: Dapatkan path dari 'filepath' ATAU '_filename' ---
             file_path = file_info.get('filepath') or file_info.get('_filename')
             
             if not file_path or not os.path.exists(file_path):
                 logger.warning(f"File path not found for entry {i}, skipping. Info: {file_info}")
                 continue
 
-            downloaded_files.append(file_path) # Tambahkan ke daftar untuk dihapus nanti
+            downloaded_files.append(file_path)
             
             title = info_dict.get('title', 'Media')
             uploader = info_dict.get('uploader', 'Tidak diketahui')
-
-            # --- FIX v16.17: Tentukan caption yang lebih baik ---
-            # Coba dapatkan judul dari entry individual, fallback ke judul utama
             entry_title = file_info.get('title', title)
-            # Jika judul entry adalah 'NA' atau sama dengan judul utama, gunakan format sederhana
+
             if entry_title == 'NA' or entry_title == title or not entry_title:
                 caption = f"<b>{safe_html(title)}</b> ({i+1}/{len(files_to_process)})\n"
             else:
                 caption = f"<b>{safe_html(entry_title)}</b>\n<i>(dari Album: {safe_html(title)})</i>\n"
             
             caption += f"<i>oleh {safe_html(uploader)}</i>\n\nDiunduh dengan @{context.bot.username}"
-            # --- END FIX v16.17 ---
             
             ext = Path(file_path).suffix.lower()
             image_exts = ['.jpg', '.jpeg', '.png', '.webp']
@@ -1379,7 +1327,7 @@ async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TY
                     sent_file = await context.bot.send_video(update.effective_chat.id, video=f, caption=caption, parse_mode=ParseMode.HTML)
             
             await track_message(context, sent_file)
-            await asyncio.sleep(1) # Jeda untuk menghindari rate limit
+            await asyncio.sleep(1)
 
         await status_msg.delete()
 
@@ -1391,13 +1339,12 @@ async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TY
         await track_message(context, next_msg)
             
     except Exception as e:
-        # Menangkap semua error lain yang tidak terduga
         await send_admin_log(context, e, update, "handle_media_download (General)")
         if status_msg:
             try:
                 await status_msg.edit_text("Maaf, terjadi kesalahan teknis yang tidak terduga. Admin telah diberitahu.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
             except Exception:
-                pass # Gagal mengedit pesan status, abaikan
+                pass
     finally:
         for f in downloaded_files:
             if os.path.exists(f):
@@ -1411,10 +1358,6 @@ async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TY
 # ==============================================================================
 
 def validate_cookie_file(cookie_file: str, is_youtube: bool = False) -> bool:
-    """
-    Validasi file cookies.
-    Return True jika valid, False jika ada masalah.
-    """
     if not Path(cookie_file).exists():
         logger.error(f"File {cookie_file} tidak ditemukan!")
         return False
@@ -1427,17 +1370,14 @@ def validate_cookie_file(cookie_file: str, is_youtube: bool = False) -> bool:
             logger.error(f"File cookie {cookie_file} kosong!")
             return False
             
-        # Cek format Netscape
         if '# Netscape HTTP Cookie File' not in content:
             logger.warning(f"⚠️ {cookie_file} bukan format Netscape!")
             logger.warning("Pastikan Anda export dengan extension/tool yang benar")
         
         if not is_youtube:
-            # Untuk cookies generik, cek format dan non-empty sudah cukup
             logger.info(f"✅ Validasi dasar {cookie_file} passed")
             return True
 
-        # --- Validasi spesifik YouTube ---
         required_cookies = ['VISITOR_INFO1_LIVE', 'YSC']
         important_cookies = ['LOGIN_INFO', '__Secure-3PSID', '__Secure-3PAPISID']
         
@@ -1461,23 +1401,20 @@ def validate_cookie_file(cookie_file: str, is_youtube: bool = False) -> bool:
                     except ValueError:
                         pass
         
-        # Cek cookies wajib
         missing_required = [c for c in required_cookies if not found_cookies[c]]
         if missing_required:
             logger.error(f"❌ Cookies YouTube wajib tidak ditemukan: {', '.join(missing_required)}")
             logger.error("Export ulang cookies dari browser yang sudah login YouTube!")
             return False
         
-        # Cek cookies penting (warning saja)
         missing_important = [c for c in important_cookies if not found_cookies[c]]
         if missing_important:
             logger.warning(f"⚠️ Cookies YouTube penting tidak ada: {', '.join(missing_important)}")
             logger.warning("Bot mungkin mengalami masalah dengan video tertentu (age restricted, etc)")
         
-        # Cek expiry date
         current_timestamp = int(datetime.now().timestamp())
         for cookie_name, expiry in expiry_dates.items():
-            if expiry == 0:  # Session cookie
+            if expiry == 0:
                 continue
                 
             if expiry < current_timestamp:
@@ -1485,7 +1422,6 @@ def validate_cookie_file(cookie_file: str, is_youtube: bool = False) -> bool:
                 logger.error("Export cookies baru dari browser!")
                 return False
             
-            # Warning jika akan expired dalam 7 hari
             days_remaining = (expiry - current_timestamp) / 86400
             if days_remaining < 7:
                 logger.warning(f"⚠️ Cookie YouTube '{cookie_name}' akan expired dalam {days_remaining:.1f} hari!")
@@ -1499,17 +1435,12 @@ def validate_cookie_file(cookie_file: str, is_youtube: bool = False) -> bool:
         return False
 
 def setup_all_cookies():
-    """
-    Setup semua cookies (YouTube & Generik) dari environment variables.
-    Return (youtube_valid, generic_valid)
-    """
     youtube_cookie_b64 = os.environ.get("YOUTUBE_COOKIES_BASE64")
     generic_cookie_b64 = os.environ.get("GENERIC_COOKIES_BASE64")
     
     youtube_valid = False
     generic_valid = False
 
-    # --- Setup YouTube Cookies ---
     if not youtube_cookie_b64:
         logger.error("❌ YOUTUBE_COOKIES_BASE64 tidak ditemukan!")
         logger.error("Fitur Downloader YouTube tidak akan berfungsi.")
@@ -1525,7 +1456,6 @@ def setup_all_cookies():
         except Exception as e:
             logger.error(f"❌ Gagal setup cookies YouTube: {e}")
 
-    # --- Setup Generic Cookies ---
     if not generic_cookie_b64:
         logger.warning("⚠️ GENERIC_COOKIES_BASE64 tidak ditemukan!")
         logger.warning("Fitur Downloader Media (IG, Twitter, dll) mungkin tidak akan berfungsi untuk konten privat.")
@@ -1551,33 +1481,37 @@ def get_ytdlp_options(url: str = None):
     opts = {
         'quiet': True,
         'no_warnings': True,
-        'noplaylist': False, # Izinkan playlist untuk multi-media
+        'noplaylist': False,
         'rm_cachedir': True,
-        'retries': 5,  # Tingkatkan retry
+        'retries': 5,
         'fragment_retries': 5,
-        'skip_unavailable_fragments': True,  # Skip fragment yang error
+        'skip_unavailable_fragments': True,
         'http_headers': {'User-Agent': CHROME_USER_AGENT},
         'nocheckcertificate': True,
-        # Tambahan untuk bypass restriction
         'geo_bypass': True,
-        'age_limit': 21,  # Bypass age restriction
+        'age_limit': 21,
     }
     
-    # --- START COOKIE LOGIC ---
     cookie_file_to_use = None
+    is_youtube_url = False
     if url:
         if 'youtube.com' in url or 'youtu.be' in url:
+            is_youtube_url = True
             if Path(YOUTUBE_COOKIE_FILE).exists():
                 cookie_file_to_use = YOUTUBE_COOKIE_FILE
         else:
-            # Untuk semua situs lain (Insta, Twitter, dll.)
             if Path(GENERIC_COOKIE_FILE).exists():
                 cookie_file_to_use = GENERIC_COOKIE_FILE
 
     if cookie_file_to_use:
         opts['cookiefile'] = cookie_file_to_use
         logger.info(f"Menggunakan cookie file: {cookie_file_to_use} for {url}")
-    # --- END COOKIE LOGIC ---
+
+    # --- PERBAIKAN UTAMA: Tentukan format unduhan ---
+    # Untuk non-YouTube, gunakan 'best' untuk menangkap foto dan video
+    if not is_youtube_url:
+        opts['format'] = 'best'
+    # Biarkan format default untuk YouTube agar logika pemilihan kualitas berfungsi
 
     return opts
 
@@ -1591,20 +1525,15 @@ def main():
     if not ADMIN_ID:
         logger.warning("TELEGRAM_ADMIN_ID tidak diatur. Laporan eror tidak akan dikirimkan ke admin.")
 
-    # Enhanced cookie setup dengan validasi
     youtube_valid, generic_valid = setup_all_cookies()
 
-    # --- Graceful Shutdown & Timeout ---
-    # Register signal handlers
-    signal.signal(signal.SIGINT, signal_handler)    # Ctrl+C
-    signal.signal(signal.SIGTERM, signal_handler)  # Kill signal
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
     print("🔧 Registering shutdown handlers...")
 
     timeout_config = HTTPXRequest(connect_timeout=10.0, read_timeout=20.0, write_timeout=20.0)
     bot_application = Application.builder().token(TOKEN).request(timeout_config).build()
-    # --- AKHIR Graceful Shutdown & Timeout ---
     
-    # Tambahkan semua handler ke bot_application
     bot_application.add_handler(CommandHandler("start", start))
     bot_application.add_handler(CallbackQueryHandler(start, pattern='^back_to_start$'))
     bot_application.add_handler(CallbackQueryHandler(clear_history, pattern='^clear_history$'))
@@ -1621,10 +1550,8 @@ def main():
     bot_application.add_handler(CallbackQueryHandler(handle_youtube_download_choice, pattern=r'^yt_dl\|.+'))
     bot_application.add_handler(CallbackQueryHandler(generate_password, pattern='^gen_password$'))
 
-
-    print(f"🤖 Bot Pulsa Net (v16.17 - Professional Photo & Album Downloader) sedang berjalan...")
+    print(f"🤖 Bot Pulsa Net (v16.18 - Universal Photo & Video Downloader) sedang berjalan...")
     
-    # --- Laporan Status Cookie Baru ---
     if youtube_valid:
         print("✅ YouTube Downloader: AKTIF")
     else:
@@ -1644,9 +1571,7 @@ def main():
     print("💡 Tekan Ctrl+C untuk shutdown dengan aman")
     print("=" * 60)
 
-    # Menjalankan bot dengan error handling
     bot_application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
-
 
 if __name__ == "__main__":
     main()
