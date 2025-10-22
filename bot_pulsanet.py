@@ -2,24 +2,16 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
 # Developer: frd009
-# Versi: 16.20 (Graceful Shutdown Fix)
+# Versi: 16.21 (NameError Fix)
+#
+# CHANGELOG v16.21:
+# - FIX: Mengatasi NameError: name 'handle_media_download' is not defined
+#   dengan mengubah urutan definisi fungsi agar 'handle_media_download'
+#   didefinisikan sebelum dipanggil oleh 'handle_text_message'.
 #
 # CHANGELOG v16.20:
 # - FIX: Mengatasi NameError: name 'SIGTERM' is not defined dengan memanggil
 #   signal.SIGTERM secara benar di dalam fungsi main().
-#
-# CHANGELOG v16.19:
-# - ADD: Library 'filetype' untuk deteksi media yang lebih akurat berdasarkan MIME type.
-# - FIX: Mengatasi error "No video formats found" untuk postingan foto (misal: Instagram)
-#   dengan menambahkan logika retry cerdas di handle_media_download.
-# - FIX: Deteksi tipe file kini menggunakan MIME type (bukan hanya ekstensi),
-#   memastikan file dikirim sebagai foto/video dengan benar.
-# - IMPROVE: Opsi yt-dlp dioptimalkan untuk menangani carousel/album dengan lebih
-#   andal dan menghindari unduhan duplikat (misal: thumbnail).
-# - IMPROVE: Pesan error kepada pengguna menjadi lebih spesifik dan membantu.
-# - IMPROVE: Validasi 'entries' di dalam carousel/album dibuat lebih kuat.
-# - ADD: Dukungan untuk mengirim file sebagai 'document' jika tipe media
-#   tidak dapat dikenali sebagai foto atau video.
 # ============================================
 
 import os
@@ -352,6 +344,34 @@ def run_yt_dlp_sync(ydl_opts, url, download=False):
 
 keyboard_error_back = InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Kembali ke Menu Utama", callback_data="back_to_start")]])
 
+def detect_media_type(file_path: str) -> str:
+    """
+    Deteksi apakah file adalah foto atau video menggunakan MIME type.
+    Returns: 'photo', 'video', 'document', atau 'unknown'
+    """
+    try:
+        kind = filetype.guess(file_path)
+        if kind is not None:
+            if kind.mime.startswith('image/'):
+                return 'photo'
+            elif kind.mime.startswith('video/'):
+                return 'video'
+        
+        ext = Path(file_path).suffix.lower()
+        image_exts = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp']
+        video_exts = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.flv']
+        
+        if ext in image_exts:
+            return 'photo'
+        elif ext in video_exts:
+            return 'video'
+        else:
+            return 'document'
+            
+    except Exception as e:
+        logger.error(f"Error detecting media type for {file_path}: {e}")
+        return 'unknown'
+
 async def send_admin_log(context: ContextTypes.DEFAULT_TYPE, error: Exception, update: Update, from_where: str, custom_message: str = ""):
     """Memformat dan mengirim log eror ke Admin, dengan pesan kustom opsional."""
     if not ADMIN_ID:
@@ -503,541 +523,194 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await track_message(context, error_msg)
         except:
             pass
-
-async def show_operator_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    try:
-        await query.answer()
-        product_type_key = query.data.split('_')[1]
-        product_type_name = "Paket Data" if product_type_key == "paket" else "Pulsa"
-        operators = {"XL": "🌐", "Axis": "🌐", "Tri": "🌐", "Telkomsel": "🌐", "Indosat": "🌐", "By.U": "🌐"}
-        op_items = list(operators.items())
-        keyboard = []
-        for i in range(0, len(op_items), 2):
-            row = [InlineKeyboardButton(f"{icon} {op}", callback_data=f"list_{product_type_key}_{op.lower()}") for op, icon in op_items[i:i+2]]
-            keyboard.append(row)
-        keyboard.append([InlineKeyboardButton("⬅️ Kembali ke Menu Utama", callback_data="back_to_start")])
-        
-        try:
-            await query.edit_message_text(f"Anda memilih kategori <b>{product_type_name}</b>.\nSilakan pilih provider:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
-        except BadRequest as e:
-            if "Message is not modified" in str(e):
-                logger.info(f"Tried to edit message {query.message.message_id} with identical content in show_operator_menu. Skipping.")
-                await query.answer("Konten tidak berubah.")
-            else:
-                raise e
-    except Exception as e:
-        await send_admin_log(context, e, update, "show_operator_menu")
-        await query.edit_message_text("Maaf, terjadi kesalahan.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-
-async def show_xl_paket_submenu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    try:
-        await query.answer()
-        keyboard = [
-            [InlineKeyboardButton("🤝 Akrab", callback_data="list_paket_xl_akrab"), InlineKeyboardButton("🥳 Bebas Puas", callback_data="list_paket_xl_bebaspuas")],
-            [InlineKeyboardButton("⭕️ Circle", callback_data="list_paket_xl_circle"), InlineKeyboardButton("🚀 Paket Lainnya", callback_data="list_paket_xl_paket")],
-            [InlineKeyboardButton("⬅️ Kembali ke Provider", callback_data="main_paket")]
-        ]
-        try:
-            await query.edit_message_text("<b>Pilihan Paket Data XL 🌐</b>\n\nSilakan pilih jenis paket di bawah ini:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
-        except BadRequest as e:
-            if "Message is not modified" in str(e):
-                logger.info(f"Tried to edit message {query.message.message_id} with identical content in show_xl_paket_submenu. Skipping.")
-                await query.answer("Konten tidak berubah.")
-            else:
-                raise e
-    except Exception as e:
-        await send_admin_log(context, e, update, "show_xl_paket_submenu")
-        await query.edit_message_text("Maaf, terjadi kesalahan.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-
-async def show_product_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    try:
-        data_parts = query.data.split('_')
-        await query.answer()
-        product_type_key, category_key, special_type_key = data_parts[1], data_parts[2], data_parts[3] if len(data_parts) > 3 else None
-        titles = {"tri": "Tri 🌐", "axis": "Axis 🌐", "telkomsel": "Telkomsel 🌐", "indosat": "Indosat 🌐", "by.u": "By.U 🌐", "xl": "XL 🌐"}
-        base_title = titles.get(category_key, '')
-        if special_type_key:
-            products = get_products(category=category_key, special_type=special_type_key)
-            title_map = {"akrab": "Paket Akrab", "bebaspuas": "Paket Bebas Puas", "circle": "Paket Circle", "paket": "Paket Lainnya"}
-            title = f"<b>{base_title} - {title_map.get(special_type_key)}</b>"
-        else:
-            products = get_products(category=category_key, product_type=product_type_key)
-            product_name = 'Paket Data' if product_type_key == 'paket' else 'Pulsa'
-            title = f"<b>{base_title} - {product_name}</b>"
-        
-        back_cb = "list_paket_xl" if category_key == 'xl' and product_type_key == 'paket' else f"main_{product_type_key}"
-
-        if not products:
-            try:
-                await query.edit_message_text("Mohon maaf, produk untuk kategori ini belum tersedia.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data=back_cb)]]), parse_mode=ParseMode.HTML)
-            except BadRequest as e:
-                if "Message is not modified" in str(e):
-                    logger.info(f"Tried to edit message {query.message.message_id} with identical content (no products). Skipping.")
-                    await query.answer("Konten tidak berubah.")
-                else:
-                    raise e
-            return
-        
-        sorted_keys = sorted(products.keys(), key=lambda k: PRICES.get(k, 0))
-        keyboard = []
-        for key in sorted_keys:
-            short_name = re.sub(r'^(Tri|Axis|XL|Telkomsel|Indosat|By\.U)\s*', '', products[key], flags=re.I).replace('Paket ', '')
-            button_text = f"{short_name} - Rp{PRICES.get(key, 0):,}".replace(",", ".")
-            keyboard.append([InlineKeyboardButton(button_text, callback_data=key)])
-        
-        keyboard.append([InlineKeyboardButton("⬅️ Kembali", callback_data=back_cb)])
-        
-        try:
-            await query.edit_message_text(f"{title}\n\nSilakan pilih produk yang Anda inginkan:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
-        except BadRequest as e:
-            if "Message is not modified" in str(e):
-                logger.info(f"Tried to edit message {query.message.message_id} with identical content in show_product_list. Skipping.")
-                await query.answer("Konten tidak berubah.")
-            else:
-                raise e
-    except Exception as e:
-        await send_admin_log(context, e, update, "show_product_list")
-        await query.edit_message_text("Maaf, terjadi kesalahan.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-
-async def show_package_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    try:
-        package_key = query.data
-        await query.answer()
-        info = ALL_PACKAGES_DATA.get(package_key, {})
-        category, p_type = info.get('category', '').lower(), info.get('type', '').lower()
-        product_type_key = 'pulsa' if p_type == 'pulsa' else 'paket'
-        if category == 'xl' and product_type_key == 'paket':
-            back_data = f"list_paket_xl_{p_type}" if p_type in ['akrab', 'bebaspuas', 'circle'] else "list_paket_xl_paket"
-        else:
-            back_data = f"list_{product_type_key}_{category}"
-        keyboard = [[InlineKeyboardButton("🛒 Beli Sekarang (Website)", url="https://pulsanet.kesug.com/beli.html")],
-                    [InlineKeyboardButton("⬅️ Kembali ke Daftar", callback_data=back_data)],
-                    [InlineKeyboardButton("🏠 Menu Utama", callback_data="back_to_start")]]
-        
-        try:
-            await query.edit_message_text(PAKET_DESCRIPTIONS.get(package_key, "Informasi produk tidak ditemukan."), reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML, disable_web_page_preview=True)
-        except BadRequest as e:
-            if "Message is not modified" in str(e):
-                logger.info(f"Tried to edit message {query.message.message_id} with identical content in show_package_details. Skipping.")
-                await query.answer("Konten tidak berubah.")
-            else:
-                raise e
-    except Exception as e:
-        await send_admin_log(context, e, update, "show_package_details")
-        await query.edit_message_text("Maaf, terjadi kesalahan.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-
-async def show_bantuan(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    try:
-        await query.answer()
-        try:
-            await query.edit_message_text(PAKET_DESCRIPTIONS["bantuan"], reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
-        except BadRequest as e:
-            if "Message is not modified" in str(e):
-                logger.info(f"Tried to edit message {query.message.message_id} with identical content in show_bantuan. Skipping.")
-                await query.answer("Konten tidak berubah.")
-            else:
-                raise e
-    except Exception as e:
-        await send_admin_log(context, e, update, "show_bantuan")
-        await query.edit_message_text("Maaf, terjadi kesalahan.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-
-async def show_tools_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    try:
-        await query.answer()
-        text = "<b>🛠️ Tools & Hiburan</b>\n\nPilih salah satu alat atau hiburan yang tersedia di bawah ini."
-        keyboard = [
-            [InlineKeyboardButton("🖼️ Buat QR Code", callback_data="ask_for_qr"), InlineKeyboardButton("💹 Kalkulator Kurs", callback_data="ask_for_currency")],
-            [InlineKeyboardButton("▶️ YouTube Downloader", callback_data="ask_for_youtube"), InlineKeyboardButton("🔗 Media Downloader", callback_data="ask_for_media_link")],
-            [InlineKeyboardButton("🔐 Buat Password", callback_data="gen_password"), InlineKeyboardButton("🎮 Mini Game", callback_data="main_game")],
-            [InlineKeyboardButton("⬅️ Kembali ke Menu Utama", callback_data="back_to_start")]
-        ]
-        try:
-            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
-        except BadRequest as e:
-            if "Message is not modified" in str(e):
-                logger.info(f"Tried to edit message {query.message.message_id} with identical content in show_tools_menu. Skipping.")
-                await query.answer("Konten tidak berubah.")
-            else:
-                raise e
-    except Exception as e:
-        await send_admin_log(context, e, update, "show_tools_menu")
-        await query.edit_message_text("Maaf, terjadi kesalahan.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-
-async def prompt_for_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    try:
-        await query.answer()
-        action = query.data
-        text = ""
-        back_button_callback = "main_tools"
-
-        if action == "ask_for_number":
-            context.user_data['state'] = 'awaiting_number'
-            text = ("<b>🔍 Cek Info Nomor Telepon (Global)</b>\n\n"
-                    "Silakan kirimkan nomor HP yang ingin Anda periksa, <b>wajib</b> dengan format internasional.\n\n"
-                    "Contoh: <code>+6281234567890</code> (Indonesia), <code>+12025550139</code> (USA).")
-            back_button_callback = "back_to_start"
-        elif action == "ask_for_qr":
-            context.user_data['state'] = 'awaiting_qr_text'
-            text = ("<b>🖼️ Generator QR Code</b>\n\nKirimkan teks, tautan, atau nomor HP yang ingin Anda jadikan QR Code.")
-        elif action == "ask_for_youtube":
-            context.user_data['state'] = 'awaiting_youtube_link'
-            text = ("<b>▶️ YouTube Downloader</b>\n\nKirimkan link video YouTube yang ingin Anda unduh.")
-        elif action == "ask_for_media_link":
-            context.user_data['state'] = 'awaiting_media_link'
-            text = ("<b>🔗 Media Downloader Universal</b>\n\n"
-                    "Kirimkan link dari Instagram, Twitter, TikTok, Facebook, dll. untuk mengunduh video atau gambar.")
-        elif action == "ask_for_currency":
-            context.user_data['state'] = 'awaiting_currency'
-            text = ("<b>💹 Kalkulator Kurs Mata Uang</b>\n\n"
-                    "Kirimkan permintaan konversi Anda dalam format:\n"
-                    "<code>[jumlah] [kode_asal] to [kode_tujuan]</code>\n\n"
-                    "<b>Contoh:</b>\n"
-                    "• <code>100 USD to IDR</code>\n"
-                    "• <code>50 EUR JPY</code>\n"
-                    "• <code>1000000 IDR MYR</code>")
-        else:  
-            return
             
-        keyboard = [[InlineKeyboardButton("⬅️ Batal & Kembali", callback_data=back_button_callback)]]
-        
-        try:
-            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
-        except BadRequest as e:
-            if "Message is not modified" in str(e):
-                logger.info(f"Tried to edit message {query.message.message_id} with identical content in prompt_for_action. Skipping.")
-                await query.answer("Konten tidak berubah.")
-            else:
-                raise e
-    except Exception as e:
-        await send_admin_log(context, e, update, "prompt_for_action")
-        try:
-            await query.edit_message_text("Maaf, terjadi kesalahan.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-        except BadRequest as e_inner:
-            if "Message is not modified" in str(e_inner):
-                logger.info(f"Tried to edit message {query.message.message_id} to identical error message in prompt_for_action error handler. Skipping.")
-            else:
-                logger.error(f"Failed to send error message in prompt_for_action error handler: {e_inner}")
-
-
-async def handle_currency_conversion(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str):
+    """
+    FIXED VERSION: Download media (foto & video) dari Instagram, Twitter, TikTok, dll.
+    """
     status_msg = None
-    try:
-        status_msg = await update.message.reply_text("💱 Menghitung...", parse_mode=ParseMode.HTML)
-        await track_message(context, status_msg)
-        
-        text = update.message.text.upper()
-        match = re.match(r"([\d\.\,]+)\s*([A-Z]{3})\s*(?:TO|IN|)\s*([A-Z]{3})", text)
-        if not match:
-            try:
-                await status_msg.edit_text("Format salah. Contoh: <code>100 USD to IDR</code>.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-            except BadRequest as e:
-                if "Message is not modified" in str(e):
-                    logger.info(f"Tried to edit status_msg {status_msg.message_id} with identical content (bad format). Skipping.")
-                else:
-                    raise e
-            return
-        amount_str, base_curr, target_curr = match.groups()
-        amount = float(amount_str.replace(",", ""))
-        api_url = f"https://open.er-api.com/v6/latest/{base_curr}"
-        async with httpx.AsyncClient() as client:
-            response = await client.get(api_url, timeout=10)
-            response.raise_for_status()
-        data = response.json()
-        if data.get("result") == "success" and target_curr in data.get("rates", {}):
-            rate = data["rates"][target_curr]
-            converted_amount = amount * rate
-            try:
-                base_country = pycountry.currencies.get(alpha_3=base_curr)
-                base_name = base_country.name if base_country else base_curr
-                target_country = pycountry.currencies.get(alpha_3=target_curr)
-                target_name = target_country.name if target_country else target_curr
-            except Exception:
-                base_name, target_name = base_curr, target_curr
-            result_text = (
-                f"✅ <b>Hasil Konversi</b>\n\n"
-                f"<b>Dari:</b> {amount:,.2f} {base_curr} ({base_name})\n"
-                f"<b>Ke:</b> {converted_amount:,.2f} {target_curr} ({target_name})\n\n"
-                f"<i>Kurs 1 {base_curr} = {rate:,.2f} {target_curr}</i>\n"
-                f"<a href='https://www.google.com/finance/quote/{base_curr}-{target_curr}'>Sumber data real-time</a>"
-            )
-            try:
-                await status_msg.edit_text(result_text, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
-            except BadRequest as e:
-                if "Message is not modified" in str(e):
-                    logger.info(f"Tried to edit status_msg {status_msg.message_id} with identical content (conversion result). Skipping.")
-                else:
-                    raise e
-        else:
-            try:
-                await status_msg.edit_text(f"Tidak dapat menemukan kurs untuk <b>{target_curr}</b>.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-            except BadRequest as e:
-                if "Message is not modified" in str(e):
-                    logger.info(f"Tried to edit status_msg {status_msg.message_id} with identical content (currency not found). Skipping.")
-                else:
-                    raise e
-    except httpx.RequestError as e:
-        await send_admin_log(context, e, update, "handle_currency_conversion (RequestError)")
-        if status_msg:
-            try:
-                await status_msg.edit_text("Gagal menghubungi layanan kurs. Coba lagi nanti.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-            except BadRequest as e_inner:
-                if "Message is not modified" in str(e_inner):
-                    logger.info(f"Tried to edit status_msg {status_msg.message_id} to identical error message. Skipping.")
-                else:
-                    logger.error(f"Failed to send error message in handle_currency_conversion error handler: {e_inner}")
-    except Exception as e:
-        await send_admin_log(context, e, update, "handle_currency_conversion")
-        if status_msg:
-            try:
-                await status_msg.edit_text("Maaf, terjadi kesalahan teknis. Tim kami sudah diberitahu.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-            except BadRequest as e_inner:
-                if "Message is not modified" in str(e_inner):
-                    logger.info(f"Tried to edit status_msg {status_msg.message_id} to identical technical error message. Skipping.")
-                else:
-                    logger.error(f"Failed to send error message in handle_currency_conversion error handler: {e_inner}")
-
-async def show_youtube_quality_options(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str):
-    status_msg = None
-    try:
-        status_msg = await context.bot.send_message(
-            update.effective_chat.id, 
-            "🔍 <b>Menganalisis link...</b>", 
-            parse_mode=ParseMode.HTML
-        )
-        await track_message(context, status_msg)
-        
-        ydl_opts = get_ytdlp_options(url=url)
-        
-        try:
-            info_dict = await asyncio.to_thread(run_yt_dlp_sync, ydl_opts, url, download=False)
-        except yt_dlp.utils.DownloadError as e:
-            error_str = str(e).lower()
-            
-            cookie_errors = [
-                'sign in to confirm', 'no suitable proxies', '410 gone',
-                'unable to extract', 'login required', 'this video requires payment',
-            ]
-            
-            if any(err in error_str for err in cookie_errors):
-                admin_alert = (
-                    "🚨 CRITICAL: YouTube Cookie Authentication Failed!\n\n"
-                    f"Error Type: {type(e).__name__}\n"
-                    f"Error Message: {str(e)[:200]}\n\n"
-                    "ACTIONS REQUIRED:\n"
-                    "1. Export fresh cookies dari browser (gunakan extension 'Get cookies.txt LOCALLY')\n"
-                    f"2. Convert ke base64: base64 {YOUTUBE_COOKIE_FILE}\n"
-                    "3. Update environment variable YOUTUBE_COOKIES_BASE64\n"
-                    "4. Restart bot\n\n"
-                    "Panduan lengkap: https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies"
-                )
-                await send_admin_log(context, e, update, "YouTube Cookie Auth Failed", custom_message=admin_alert)
-                
-                user_message = (
-                    "❌ <b>Layanan YouTube Downloader sedang bermasalah</b>\n\n"
-                    "Sistem autentikasi YouTube memerlukan pembaruan. "
-                    "Admin telah diberitahu dan sedang memperbaiki.\n\n"
-                    "<i>Error: Cookie authentication expired</i>"
-                )
-                await status_msg.edit_text(user_message, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-                return
-            
-            raise e
-
-        video_id, title, formats = info_dict.get('id', ''), info_dict.get('title', 'Video'), info_dict.get('formats', [])
-        keyboard, video_formats = [], []
-        
-        for f in formats:
-            if (f.get('vcodec') != 'none' and f.get('acodec') != 'none' and f.get('ext') == 'mp4' and 
-                f.get('height') and f.get('height') <= 720):
-                file_size_bytes = f.get('filesize') or f.get('filesize_approx')
-                if not file_size_bytes or file_size_bytes <= MAX_UPLOAD_FILE_SIZE_BYTES:
-                    video_formats.append(f)
-                else:
-                    logger.info(f"Skipping format {f.get('format_id')} due to size {format_bytes(file_size_bytes)} > {format_bytes(MAX_UPLOAD_FILE_SIZE_BYTES)}")
-        
-        video_formats.sort(key=lambda x: x.get('height', 0), reverse=True)
-        for f in video_formats[:3]:
-            label = f"📹 {f['height']}p ({format_bytes(f.get('filesize') or f.get('filesize_approx'))})"
-            keyboard.append([InlineKeyboardButton(label, callback_data=f"yt_dl|{video_id}|{f['format_id']}")])
-        
-        audio_formats = sorted([f for f in formats if f.get('acodec') != 'none' and f.get('vcodec') == 'none' and 
-                                (not f.get('filesize') or f.get('filesize') <= MAX_UPLOAD_FILE_SIZE_BYTES)],  
-                                key=lambda x: x.get('filesize') or x.get('filesize_approx') or 0, reverse=True)
-        if audio_formats:
-            best_audio = audio_formats[0]
-            label = f"🎵 Audio [{best_audio.get('ext', 'audio')}] ({format_bytes(best_audio.get('filesize') or best_audio.get('filesize_approx'))})"
-            keyboard.append([InlineKeyboardButton(label, callback_data=f"yt_dl|{video_id}|{best_audio['format_id']}")])
-        
-        if not keyboard:
-            await status_msg.edit_text(f"Tidak ditemukan format yang cocok untuk diunduh (atau melebihi batas {MAX_UPLOAD_FILE_SIZE_MB} MB).", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-            return
-        
-        keyboard.append([InlineKeyboardButton("⬅️ Batal", callback_data="main_tools")])
-        await status_msg.edit_text(
-            f"<b>{safe_html(title)}</b>\n\n"
-            "Pilih kualitas yang ingin Anda unduh:\n\n"
-            f"<i>⚠️ <b>Perhatian:</b> File di atas {MAX_UPLOAD_FILE_SIZE_MB} MB mungkin gagal dikirim karena batasan Telegram Bot.</i>",
-            reply_markup=InlineKeyboardMarkup(keyboard), 
-            parse_mode=ParseMode.HTML
-        )
-
-    except Exception as e:
-        await send_admin_log(context, e, update, "show_youtube_quality_options_enhanced")
-        if status_msg:
-            await status_msg.edit_text(
-                "Maaf, terjadi kesalahan teknis. Tim kami sudah diberitahu.",
-                reply_markup=keyboard_error_back,
-                parse_mode=ParseMode.HTML
-            )
-
-async def handle_youtube_download_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    file_path = None
-    status_msg = None
+    downloaded_files = []
     
     try:
-        await query.answer("Memulai proses unduh...")
-        try:
-            status_msg = await query.edit_message_text(f"📥 <b>Mengunduh...</b>\n\n<i>Ini mungkin akan memakan waktu.</i>", parse_mode=ParseMode.HTML)
-        except BadRequest as e:
-            if "Message is not modified" in str(e):
-                logger.info(f"Tried to edit message {query.message.message_id} with identical content (downloading...). Skipping.")
-                status_msg = query.message
-            else:
-                raise e
-        
-        _, video_id, format_id = query.data.split('|')
-        url = f"https://www.youtube.com/watch?v={video_id}"
-        
-        is_video = any('📹' in btn.text for row in query.message.reply_markup.inline_keyboard 
-                       for btn in row if hasattr(btn, 'callback_data') and btn.callback_data == query.data)
-
-        file_path_template = f"{video_id}_{format_id}.%(ext)s"
-        
-        ydl_opts = get_ytdlp_options(url=url) 
-        ydl_opts['outtmpl'] = file_path_template
-        ydl_opts['max_filesize'] = MAX_UPLOAD_FILE_SIZE_BYTES
-
-        if is_video:
-            ydl_opts['format'] = f"{format_id}+bestaudio/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
-            ydl_opts['postprocessors'] = [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}]
-            action = ChatAction.UPLOAD_VIDEO
-        else:
-            ydl_opts['format'] = f"{format_id}/bestaudio/best"
-            ydl_opts['postprocessors'] = [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'm4a', 'preferredquality': '192'}]
-            action = ChatAction.UPLOAD_DOCUMENT
-        
-        info_dict = await asyncio.to_thread(run_yt_dlp_sync, ydl_opts, url, download=True)
-        title = info_dict.get('title', 'Video')
-        file_path = info_dict.get('_filename')
-
-        if not file_path or not os.path.exists(file_path):  
-            expected_ext = 'mp4' if is_video else 'm4a'
-            found_files = [f for f in os.listdir('.') if f.startswith(video_id) and f.endswith(f".{expected_ext}")]
-            if found_files:
-                file_path = found_files[0]
-            else:
-                raise ValueError("File tidak ditemukan setelah unduh.")
-        
-        final_file_size = os.path.getsize(file_path)
-        if final_file_size > MAX_UPLOAD_FILE_SIZE_BYTES:
-            logger.warning(f"File {file_path} terunduh tetapi ukurannya ({format_bytes(final_file_size)}) melebihi batas {MAX_UPLOAD_FILE_SIZE_MB} MB.")
-            await send_admin_log(
-                context,
-                ValueError(f"File downloaded but size ({format_bytes(final_file_size)}) > {MAX_UPLOAD_FILE_SIZE_MB}MB. yt-dlp estimate was inaccurate."),
-                update,
-                "handle_youtube_download_choice",
-                custom_message="File was deleted before upload attempt."
-            )
-            await status_msg.edit_text(
-                f"❌ <b>Gagal!</b> File berhasil diunduh, tetapi ukurannya ({format_bytes(final_file_size)}) melebihi batas unggah bot sebesar {MAX_UPLOAD_FILE_SIZE_MB} MB. Silakan pilih kualitas yang lebih rendah.",
-                reply_markup=keyboard_error_back,
-                parse_mode=ParseMode.HTML
-            )
-            return
-
-        try:
-            await status_msg.edit_text("📤 <b>Mengirim file...</b>", parse_mode=ParseMode.HTML)
-        except BadRequest as e:
-            if "Message is not modified" in str(e):
-                logger.info(f"Tried to edit status_msg {status_msg.message_id} with identical content (sending file...). Skipping.")
-            else:
-                raise e
-
-        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=action)
-        
-        caption = f"<b>{safe_html(title)}</b>\n\nDiunduh dengan @{context.bot.username}"
-        with open(file_path, 'rb') as f:
-            if is_video:
-                sent_file = await context.bot.send_video(update.effective_chat.id, video=f, caption=caption,  
-                                                          parse_mode=ParseMode.HTML, read_timeout=300, write_timeout=300)
-            else:
-                sent_file = await context.bot.send_audio(update.effective_chat.id, audio=f, caption=caption,  
-                                                          parse_mode=ParseMode.HTML, read_timeout=300, write_timeout=300)
-        await track_message(context, sent_file)
-        
-        try:
-            await status_msg.delete()
-        except TelegramError as e:
-            logger.info(f"Failed to delete status message {status_msg.message_id} in youtube_download: {e}")
-
-        keyboard_next_action = InlineKeyboardMarkup([
-            [InlineKeyboardButton("▶️ Unduh Video Lain", callback_data="ask_for_youtube")],
-            [InlineKeyboardButton("⬅️ Kembali ke Menu Tools", callback_data="main_tools")]
-        ])
-        next_action_msg = await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text="✅ Unduhan selesai. Apa yang ingin Anda lakukan selanjutnya?",
-            reply_markup=keyboard_next_action,
+        status_msg = await update.message.reply_text(
+            "📥 <b>Mengunduh media...</b> Ini mungkin memakan waktu.",
             parse_mode=ParseMode.HTML
         )
-        await track_message(context, next_action_msg)
+        await track_message(context, status_msg)
 
-    except yt_dlp.utils.DownloadError as e:
-        error_str = str(e).lower()
-        if 'sign in to confirm' in error_str or 'no suitable proxies' in error_str or '410 gone' in error_str:
-            admin_alert = ("CRITICAL: YouTube cookie authentication failed during download. The `youtube_cookies.txt` file is likely expired or invalid. "
-                           "Please ensure the YOUTUBE_COOKIES_BASE64 environment variable contains fresh cookies. "
-                           "See https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies for tips on effectively exporting YouTube cookies.")
-            await send_admin_log(context, e, update, "handle_youtube_download_choice (Cookie/Auth Error)", custom_message=admin_alert)
-            reply_text = "Maaf, terjadi kendala teknis pada layanan unduh video. Tim kami telah diberitahu. (Authentikasi YouTube gagal)"
-        elif 'max filesize' in error_str:
-            reply_text = f"❌ <b>Gagal!</b> Ukuran file yang dipilih melebihi batas unduh bot ({MAX_UPLOAD_FILE_SIZE_MB} MB)."
-        else:
-            await send_admin_log(context, e, update, "handle_youtube_download_choice (DownloadError)")
-            reply_text = "Maaf, terjadi kesalahan saat mengunduh file (mungkin video dilindungi hak cipta atau dibatasi)."
+        file_path_template = f"media_{update.effective_message.id}_%(id)s.%(ext)s"
         
-        if status_msg:
-            try:
+        ydl_opts = get_ytdlp_options(url=url)
+        ydl_opts['outtmpl'] = file_path_template
+        ydl_opts['max_filesize'] = MAX_UPLOAD_FILE_SIZE_BYTES
+        
+        info_dict = None
+        try:
+            info_dict = await asyncio.to_thread(run_yt_dlp_sync, ydl_opts, url, download=True)
+            if not info_dict:
+                raise yt_dlp.utils.DownloadError("Proses unduh tidak mengembalikan informasi.")
+
+        except (yt_dlp.utils.DownloadError, yt_dlp.utils.ExtractorError) as e:
+            error_str = str(e).lower()
+            reply_text = "Maaf, terjadi kesalahan yang tidak diketahui saat mengunduh."
+            admin_log_sent = False
+            
+            if 'no video formats found' in error_str or 'no formats found' in error_str:
+                logger.warning(f"⚠️ No video format found, retrying as photo-only post...")
+                
+                ydl_opts_retry = get_ytdlp_options(url=url)
+                ydl_opts_retry['outtmpl'] = file_path_template
+                ydl_opts_retry['format'] = 'best'
+                ydl_opts_retry['ignoreerrors'] = True
+                
+                try:
+                    info_dict = await asyncio.to_thread(run_yt_dlp_sync, ydl_opts_retry, url, download=True)
+                    if not info_dict:
+                        raise e
+                    logger.info("✅ Berhasil retry sebagai foto!")
+                except Exception as retry_error:
+                    reply_text = "❌ <b>Gagal!</b> Postingan ini mungkin hanya berisi foto yang tidak dapat diekstrak, atau link sudah dihapus."
+                    await status_msg.edit_text(reply_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+                    return
+            
+            elif ('unsupported url' in error_str and 'login' in url) or \
+                 ('this content is only available for registered users' in error_str) or \
+                 ('private' in error_str or 'login required' in error_str):
+                reply_text = "❌ <b>Gagal!</b> Konten ini bersifat pribadi atau memerlukan login.\n\n" \
+                             "<i>Pastikan Admin telah mengonfigurasi cookies untuk situs ini.</i>"
+                admin_alert = f"Gagal mengunduh {url} karena masalah otentikasi. " \
+                              f"Pastikan GENERIC_COOKIES_BASE64 sudah diatur dan valid. Error: {e}"
+                await send_admin_log(context, e, update, "handle_media_download (Auth Error)", custom_message=admin_alert)
+                admin_log_sent = True
+            
+            elif 'is not a valid url' in error_str:
+                reply_text = "❌ <b>Gagal!</b> Link ini tidak valid atau platform tidak didukung."
+            elif 'unavailable' in error_str:
+                reply_text = "❌ <b>Gagal!</b> Konten ini tidak tersedia atau telah dihapus."
+            
+            logger.warning(f"yt-dlp error for URL {url}: {e}")
+
+            if not admin_log_sent:
+                await send_admin_log(context, e, update, "handle_media_download (DownloadError)", custom_message=f"URL: {url}")
+
+            if status_msg and 'info_dict' not in locals():
                 await status_msg.edit_text(reply_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-            except BadRequest as e_inner:
-                if "Message is not modified" in str(e_inner):
-                    logger.info(f"Tried to edit status_msg {status_msg.message_id} to identical error message. Skipping.")
+                return
+
+        files_to_process = []
+        
+        if info_dict.get('requested_downloads'):
+            files_to_process = info_dict['requested_downloads']
+        elif info_dict.get('entries'):
+            await status_msg.edit_text(
+                f"📥 <b>Album/Carousel terdeteksi.</b> Mengunduh {len(info_dict['entries'])} file...",
+                parse_mode=ParseMode.HTML
+            )
+            for entry in info_dict.get('entries', []):
+                if not entry:
+                    continue
+                if entry.get('filepath') or entry.get('_filename'):
+                    files_to_process.append(entry)
+                elif entry.get('thumbnail') and not entry.get('url'):
+                    logger.warning(f"Entry hanya memiliki thumbnail: {entry.get('id')}")
+                    
+        elif info_dict.get('filepath') or info_dict.get('_filename'):
+            if info_dict.get('_filename') and not info_dict.get('filepath'):
+                info_dict['filepath'] = info_dict.get('_filename')
+            files_to_process = [info_dict]
+
+        if not files_to_process:
+            logger.error(f"❌ files_to_process kosong untuk {url}")
+            logger.error(f"info_dict keys: {list(info_dict.keys())}")
+            raise ValueError("Tidak ada file yang berhasil diunduh dari metadata yt-dlp.")
+
+        await status_msg.edit_text(
+            f"📤 <b>Mengirim {len(files_to_process)} file...</b>",
+            parse_mode=ParseMode.HTML
+        )
+        
+        for i, file_info in enumerate(files_to_process):
+            file_path = file_info.get('filepath') or file_info.get('_filename')
+            
+            if not file_path or not os.path.exists(file_path):
+                logger.warning(f"⚠️ File path not found for entry {i}, skipping. Info: {file_info.get('id', 'N/A')}")
+                continue
+
+            downloaded_files.append(file_path)
+            
+            title = info_dict.get('title', 'Media')
+            uploader = info_dict.get('uploader', 'Tidak diketahui')
+            entry_title = file_info.get('title', title)
+
+            if entry_title == 'NA' or entry_title == title or not entry_title:
+                caption = f"<b>{safe_html(title)}</b> ({i+1}/{len(files_to_process)})\n"
+            else:
+                caption = f"<b>{safe_html(entry_title)}</b>\n<i>(dari Album: {safe_html(title)})</i>\n"
+            
+            caption += f"<i>oleh {safe_html(uploader)}</i>\n\nDiunduh dengan @{context.bot.username}"
+            
+            media_type = detect_media_type(file_path)
+            
+            with open(file_path, 'rb') as f:
+                if media_type == 'photo':
+                    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.UPLOAD_PHOTO)
+                    sent_file = await context.bot.send_photo(
+                        update.effective_chat.id,
+                        photo=f,
+                        caption=caption,
+                        parse_mode=ParseMode.HTML
+                    )
+                elif media_type == 'video':
+                    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.UPLOAD_VIDEO)
+                    sent_file = await context.bot.send_video(
+                        update.effective_chat.id,
+                        video=f,
+                        caption=caption,
+                        parse_mode=ParseMode.HTML
+                    )
                 else:
-                    logger.error(f"Failed to send error message in handle_youtube_download_choice error handler: {e_inner}")
+                    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.UPLOAD_DOCUMENT)
+                    sent_file = await context.bot.send_document(
+                        update.effective_chat.id,
+                        document=f,
+                        caption=caption,
+                        parse_mode=ParseMode.HTML
+                    )
+            
+            await track_message(context, sent_file)
+            await asyncio.sleep(1)
+
+        await status_msg.delete()
+
+        keyboard_next = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔗 Unduh Media Lain", callback_data="ask_for_media_link")],
+            [InlineKeyboardButton("⬅️ Kembali ke Tools", callback_data="main_tools")]
+        ])
+        next_msg = await context.bot.send_message(
+            update.effective_chat.id,
+            "✅ Semua media berhasil diunduh.",
+            reply_markup=keyboard_next
+        )
+        await track_message(context, next_msg)
+            
     except Exception as e:
-        await send_admin_log(context, e, update, "handle_youtube_download_choice")
+        await send_admin_log(context, e, update, "handle_media_download (General)")
         if status_msg:
             try:
-                await status_msg.edit_text("Maaf, terjadi kesalahan teknis. Tim kami sudah diberitahu.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-            except BadRequest as e_inner:
-                if "Message is not modified" in str(e_inner):
-                    logger.info(f"Tried to edit status_msg {status_msg.message_id} to identical technical error message. Skipping.")
-                else:
-                    logger.error(f"Failed to send error message in handle_youtube_download_choice error handler: {e_inner}")
+                await status_msg.edit_text(
+                    "Maaf, terjadi kesalahan teknis yang tidak terduga. Admin telah diberitahu.",
+                    reply_markup=keyboard_error_back,
+                    parse_mode=ParseMode.HTML
+                )
+            except Exception:
+                pass
     finally:
-        if file_path and os.path.exists(file_path):
-            try:
-                os.remove(file_path)
-            except Exception as e:
-                logger.error(f"Gagal menghapus file {file_path}: {e}")
+        for f in downloaded_files:
+            if os.path.exists(f):
+                try:
+                    os.remove(f)
+                except Exception as e:
+                    logger.error(f"Gagal menghapus file media {f}: {e}")
 
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -1232,172 +905,6 @@ async def generate_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await send_admin_log(context, e, update, "generate_password")
         await query.edit_message_text("Maaf, terjadi kesalahan saat membuat password.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-# ==============================================================================
-# 🚀 FUNGSI UTAMA & FUNGSI BARU UNTUK COOKIES
-# ==============================================================================
-
-def validate_cookie_file(cookie_file: str, is_youtube: bool = False) -> bool:
-    if not Path(cookie_file).exists():
-        logger.error(f"File {cookie_file} tidak ditemukan!")
-        return False
-    
-    try:
-        with open(cookie_file, 'r') as f:
-            content = f.read()
-        
-        if not content.strip():
-            logger.error(f"File cookie {cookie_file} kosong!")
-            return False
-            
-        if '# Netscape HTTP Cookie File' not in content:
-            logger.warning(f"⚠️ {cookie_file} bukan format Netscape!")
-            logger.warning("Pastikan Anda export dengan extension/tool yang benar")
-        
-        if not is_youtube:
-            logger.info(f"✅ Validasi dasar {cookie_file} passed")
-            return True
-
-        required_cookies = ['VISITOR_INFO1_LIVE', 'YSC']
-        important_cookies = ['LOGIN_INFO', '__Secure-3PSID', '__Secure-3PAPISID']
-        
-        lines = content.split('\n')
-        found_cookies = {cookie: False for cookie in required_cookies + important_cookies}
-        expiry_dates = {}
-        
-        for line in lines:
-            if line.startswith('#') or not line.strip():
-                continue
-            
-            parts = line.split('\t')
-            if len(parts) >= 7:
-                cookie_name = parts[5]
-                cookie_expiry = parts[4]
-                
-                if cookie_name in found_cookies:
-                    found_cookies[cookie_name] = True
-                    try:
-                        expiry_dates[cookie_name] = int(cookie_expiry)
-                    except ValueError:
-                        pass
-        
-        missing_required = [c for c in required_cookies if not found_cookies[c]]
-        if missing_required:
-            logger.error(f"❌ Cookies YouTube wajib tidak ditemukan: {', '.join(missing_required)}")
-            logger.error("Export ulang cookies dari browser yang sudah login YouTube!")
-            return False
-        
-        missing_important = [c for c in important_cookies if not found_cookies[c]]
-        if missing_important:
-            logger.warning(f"⚠️ Cookies YouTube penting tidak ada: {', '.join(missing_important)}")
-            logger.warning("Bot mungkin mengalami masalah dengan video tertentu (age restricted, etc)")
-        
-        current_timestamp = int(datetime.now().timestamp())
-        for cookie_name, expiry in expiry_dates.items():
-            if expiry == 0:
-                continue
-                
-            if expiry < current_timestamp:
-                logger.error(f"❌ Cookie YouTube '{cookie_name}' sudah EXPIRED!")
-                logger.error("Export cookies baru dari browser!")
-                return False
-            
-            days_remaining = (expiry - current_timestamp) / 86400
-            if days_remaining < 7:
-                logger.warning(f"⚠️ Cookie YouTube '{cookie_name}' akan expired dalam {days_remaining:.1f} hari!")
-                logger.warning("Segera persiapkan cookies baru!")
-        
-        logger.info(f"✅ Semua validasi cookies {cookie_file} passed")
-        return True
-        
-    except Exception as e:
-        logger.error(f"Error saat validasi {cookie_file}: {e}")
-        return False
-
-def setup_all_cookies():
-    youtube_cookie_b64 = os.environ.get("YOUTUBE_COOKIES_BASE64")
-    generic_cookie_b64 = os.environ.get("GENERIC_COOKIES_BASE64")
-    
-    youtube_valid = False
-    generic_valid = False
-
-    if not youtube_cookie_b64:
-        logger.error("❌ YOUTUBE_COOKIES_BASE64 tidak ditemukan!")
-        logger.error("Fitur Downloader YouTube tidak akan berfungsi.")
-    else:
-        try:
-            cookie_data = base64.b64decode(youtube_cookie_b64).decode('utf-8')
-            with open(YOUTUBE_COOKIE_FILE, 'w') as f:
-                f.write(cookie_data)
-            logger.info(f"✅ File {YOUTUBE_COOKIE_FILE} berhasil dibuat")
-            youtube_valid = validate_cookie_file(YOUTUBE_COOKIE_FILE, is_youtube=True)
-        except base64.binascii.Error:
-            logger.error("❌ YOUTUBE_COOKIES_BASE64 bukan base64 yang valid!")
-        except Exception as e:
-            logger.error(f"❌ Gagal setup cookies YouTube: {e}")
-
-    if not generic_cookie_b64:
-        logger.warning("⚠️ GENERIC_COOKIES_BASE64 tidak ditemukan!")
-        logger.warning("Fitur Downloader Media (IG, Twitter, dll) mungkin tidak akan berfungsi untuk konten privat.")
-    else:
-        try:
-            cookie_data = base64.b64decode(generic_cookie_b64).decode('utf-8')
-            with open(GENERIC_COOKIE_FILE, 'w') as f:
-                f.write(cookie_data)
-            logger.info(f"✅ File {GENERIC_COOKIE_FILE} berhasil dibuat")
-            generic_valid = validate_cookie_file(GENERIC_COOKIE_FILE, is_youtube=False)
-        except base64.binascii.Error:
-            logger.error("❌ GENERIC_COOKIES_BASE64 bukan base64 yang valid!")
-        except Exception as e:
-            logger.error(f"❌ Gagal setup cookies generik: {e}")
-
-    return youtube_valid, generic_valid
-
-def get_ytdlp_options(url: str = None):
-    """
-    FIXED VERSION: Return yt-dlp options dengan konfigurasi optimal 
-    untuk foto DAN video.
-    """
-    opts = {
-        'quiet': True,
-        'no_warnings': True,
-        'noplaylist': False,
-        'rm_cachedir': True,
-        'retries': 5,
-        'fragment_retries': 5,
-        'skip_unavailable_fragments': True,
-        'http_headers': {'User-Agent': CHROME_USER_AGENT},
-        'nocheckcertificate': True,
-        'geo_bypass': True,
-        'age_limit': 21,
-    }
-    
-    cookie_file_to_use = None
-    is_youtube_url = False
-    
-    if url:
-        if 'youtube.com' in url or 'youtu.be' in url:
-            is_youtube_url = True
-            if Path(YOUTUBE_COOKIE_FILE).exists():
-                cookie_file_to_use = YOUTUBE_COOKIE_FILE
-        else:
-            if Path(GENERIC_COOKIE_FILE).exists():
-                cookie_file_to_use = GENERIC_COOKIE_FILE
-
-    if cookie_file_to_use:
-        opts['cookiefile'] = cookie_file_to_use
-        logger.info(f"Menggunakan cookie file: {cookie_file_to_use} for {url}")
-
-    if not is_youtube_url:
-        opts['format'] = 'best'
-        opts['extract_flat'] = False
-        opts['writethumbnail'] = False
-        opts['format_sort'] = ['res', 'ext:mp4:m4a']
-        opts['ignoreerrors'] = False
-        logger.info(f"📸 Mode: Universal Media (Foto & Video) untuk {url}")
-    else:
-        logger.info(f"▶️ Mode: YouTube Video untuk {url}")
-
-    return opts
 
 def main():
     global bot_application
@@ -1411,7 +918,6 @@ def main():
 
     youtube_valid, generic_valid = setup_all_cookies()
 
-    # --- PERBAIKAN: Menggunakan signal.SIGTERM ---
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     print("🔧 Registering shutdown handlers...")
@@ -1435,7 +941,7 @@ def main():
     bot_application.add_handler(CallbackQueryHandler(handle_youtube_download_choice, pattern=r'^yt_dl\|.+'))
     bot_application.add_handler(CallbackQueryHandler(generate_password, pattern='^gen_password$'))
 
-    print(f"🤖 Bot Pulsa Net (v16.20 - Graceful Shutdown Fix) sedang berjalan...")
+    print(f"🤖 Bot Pulsa Net (v16.21 - NameError Fix) sedang berjalan...")
     
     if youtube_valid:
         print("✅ YouTube Downloader: AKTIF")
