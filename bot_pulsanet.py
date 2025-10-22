@@ -2,42 +2,24 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
 # Developer: frd009
-# Versi: 16.18 (Fix Photo-Only Post Error)
-#
-# CHANGELOG v16.18:
-# - FIX (PROFESSIONAL): Mengatasi `DownloadError: No video formats found!`
-#   saat mengunduh postingan yang hanya berisi FOTO (bukan video)
-#   dari Instagram, dll.
-# - UPDATE (PROFESSIONAL): Menambahkan `ignore_no_formats_error: True`
-#   ke konfigurasi yt-dlp. Ini memaksa yt-dlp untuk melanjutkan
-#   proses meskipun hanya menemukan gambar, membiarkan logika v16.17
-#   menemukan dan mengirim file foto tersebut.
+# Versi: 16.17 (Professional Photo & Album Downloader)
 #
 # CHANGELOG v16.17:
-# - ADD (PROFESSIONAL): Logika caption yang disempurnakan.
+# - ADD (PROFESSIONAL): Logika caption yang disempurnakan. Jika mengunduh
+#   dari album/carousel, bot akan mencoba menggunakan judul individual
+#   file (jika ada) dan merujuk ke judul album utama.
 # - FIX (PROFESSIONAL): Memperbaiki logika deteksi file secara total untuk
 #   menangani postingan multi-foto (carousel/album) dengan andal.
 # - FIX (PROFESSIONAL): Logika sekarang memeriksa `_filename` dan `filepath`
-#   di *setiap* item di dalam `info_dict['entries']`.
+#   di *setiap* item di dalam `info_dict['entries']`, memastikan
+#   *semua* foto/video dari carousel ditemukan dan dikirim,
+#   tidak hanya file pertama.
 #
 # CHANGELOG v16.16:
-# - UPDATE (PROFESSIONAL): Memastikan SEMUA `DownloadError`
-#   dikirimkan sebagai log ke Admin.
-#
-# CHANGELOG v16.15:
-# - ADD (PROFESSIONAL): Menambahkan sistem dua-cookie. Bot sekarang mendukung
-#   YOUTUBE_COOKIES_BASE64 (khusus YouTube) dan GENERIC_COOKIES_BASE64
-#   (untuk Instagram, Twitter, Facebook, dll.).
-# - FIX (PROFESSIONAL): Memperbaiki `yt_dlp.utils.DownloadError` untuk konten
-#   yang memerlukan login (seperti Instagram) dengan menggunakan
-#   `GENERIC_COOKIES_BASE64` yang baru.
-# - FIX (PROFESSIONAL): Memperbaiki `ValueError: Tidak ada file yang berhasil diunduh`
-#   dengan menambahkan logika fallback yang lebih kuat untuk mendeteksi file yang
-#   diunduh dari `info_dict`, bahkan jika `requested_downloads` kosong.
-# - UPDATE: Fungsi `get_ytdlp_options` sekarang secara cerdas memilih file
-#   cookie yang tepat (YouTube atau Generik) berdasarkan URL yang diproses.
-# - UPDATE: Proses startup bot (main) dan validasi cookie telah diperbarui
-#   untuk menangani dan melaporkan status kedua file cookie.
+# - UPDATE (PROFESSIONAL): Memastikan SEMUA `DownloadError` (bukan hanya error
+#   autentikasi) dari yt-dlp di dalam `handle_media_download`
+#   dikirimkan sebagai log ke Admin, sesuai permintaan.
+# ... (Changelog v16.15 dipertahankan)
 # ============================================
 
 import os
@@ -92,6 +74,10 @@ CHROME_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.3
 MAX_UPLOAD_FILE_SIZE_MB = 300 # New maximum upload size in MB
 MAX_UPLOAD_FILE_SIZE_BYTES = MAX_UPLOAD_FILE_SIZE_MB * 1024 * 1024
 
+# --- File Cookie ---
+YOUTUBE_COOKIE_FILE = 'youtube_cookies.txt'
+GENERIC_COOKIE_FILE = 'generic_cookies.txt'
+
 # --- Graceful Shutdown ---
 bot_application = None
 
@@ -143,7 +129,39 @@ ALL_PACKAGES_RAW = [
     {'id': 71, 'name': "Axis Bronet 2gb 30hari", 'price': 19000, 'category': 'Axis', 'type': 'Paket', 'data': '2 GB', 'validity': '30 Hari', 'details': 'Kuota 2gb, Berlaku Nasional'},
     {'id': 74, 'name': "Axis Bronet 8gb 30hari", 'price': 39000, 'category': 'Axis', 'type': 'Paket', 'data': '8 GB', 'validity': '30 Hari', 'details': 'Kuota 8gb, Berlaku Nasional'},
     {'id': 76, 'name': "Axis Bronet 20gb 30hari", 'price': 73000, 'category': 'Axis', 'type': 'Paket', 'data': '20 GB', 'validity': '30 Hari', 'details': 'Kuota 20gb, Berlaku Nasional'},
-Data, 'validity': 'N/A', 'details': 'Pulsa By.U 50.000'},
+    {'id': 181, 'name': "Freedom Internet 6GB 28Hari", 'price': 26000, 'category': 'Indosat', 'type': 'Paket', 'data': '6 GB', 'validity': '28 Hari', 'details': 'Kuota 6GB, Nasional'},
+    {'id': 186, 'name': "Freedom Internet 13GB 28Hari", 'price': 52000, 'category': 'Indosat', 'type': 'Paket', 'data': '13 GB', 'validity': '28 Hari', 'details': 'Kuota 13GB, Nasional'},
+    {'id': 188, 'name': "Freedom Internet 30GB 28Hari", 'price': 90000, 'category': 'Indosat', 'type': 'Paket', 'data': '30 GB', 'validity': '28 Hari', 'details': 'Kuota 30GB, Nasional'},
+    {'id': 266, 'name': "Tsel Promo 3gb 30 Hari", 'price': 26000, 'category': 'Telkomsel', 'type': 'Paket', 'data': '3 GB', 'validity': '30 Hari', 'details': '3gb + Bonus Extra Kuota'},
+    {'id': 269, 'name': "Tsel Promo 6.5gb 30 Hari", 'price': 57000, 'category': 'Telkomsel', 'type': 'Paket', 'data': '6.5 GB', 'validity': '30 Hari', 'details': '6.5gb + Bonus Extra Kuota'},
+    {'id': 271, 'name': "Tsel 8gb 30 Hari", 'price': 68000, 'category': 'Telkomsel', 'type': 'Paket', 'data': '8 GB', 'validity': '30 Hari', 'details': '8gb + Bonus Extra Kuota'},
+    {'id': 129, 'name': "By.U Promo 9GB 30Hari", 'price': 27000, 'category': 'By.U', 'type': 'Paket', 'data': '9 GB', 'validity': '30 Hari', 'details': 'Kuota 9GB, Nasional'},
+    {'id': 132, 'name': "By.U Promo 20GB 30Hari", 'price': 47000, 'category': 'By.U', 'type': 'Paket', 'data': '20 GB', 'validity': '30 Hari', 'details': 'Kuota 20GB, Nasional'},
+    {'id': 142, 'name': "By.U Promo 20GB 30Hari", 'price': 47000, 'category': 'By.U', 'type': 'Paket', 'data': '20 GB', 'validity': '30 Hari', 'details': 'Kuota 20GB, Nasional'},
+    # Pulsa
+    {'id': 247, 'name': "XL Pulsa 10.000", 'price': 11000, 'category': 'XL', 'type': 'Pulsa', 'data': 'Rp 10.000', 'validity': '+15 Hari', 'details': 'Pulsa Reguler 10.000'},
+    {'id': 249, 'name': "XL Pulsa 25.000", 'price': 25000, 'category': 'XL', 'type': 'Pulsa', 'data': 'Rp 25.000', 'validity': '+30 Hari', 'details': 'Pulsa Reguler 25.000'},
+    {'id': 252, 'name': "XL Pulsa 50.000", 'price': 50000, 'category': 'XL', 'type': 'Pulsa', 'data': 'Rp 50.000', 'validity': '+45 Hari', 'details': 'Pulsa Reguler 50.000'},
+    {'id': 257, 'name': "XL Pulsa 100.000", 'price': 100000, 'category': 'XL', 'type': 'Pulsa', 'data': 'Rp 100.000', 'validity': '+60 Hari', 'details': 'Pulsa Reguler 100.000'},
+    {'id': 50, 'name': "Tri Pulsa 10.000", 'price': 11000, 'category': 'Tri', 'type': 'Pulsa', 'data': 'Rp 10.000', 'validity': '+10 Hari', 'details': 'Pulsa Reguler 10.000'},
+    {'id': 53, 'name': "Tri Pulsa 25.000", 'price': 25000, 'category': 'Tri', 'type': 'Pulsa', 'data': 'Rp 25.000', 'validity': '+25 Hari', 'details': 'Pulsa Reguler 25.000'},
+    {'id': 56, 'name': "Tri Pulsa 50.000", 'price': 50000, 'category': 'Tri', 'type': 'Pulsa', 'data': 'Rp 50.000', 'validity': '+50 Hari', 'details': 'Pulsa Reguler 50.000'},
+    {'id': 62, 'name': "Tri Pulsa 100.000", 'price': 99000, 'category': 'Tri', 'type': 'Pulsa', 'data': 'Rp 100.000', 'validity': '+100 Hari', 'details': 'Pulsa Reguler 100.000'},
+    {'id': 105, 'name': "Axis Pulsa 10.000", 'price': 11000, 'category': 'Axis', 'type': 'Pulsa', 'data': 'Rp 10.000', 'validity': '+15 Hari', 'details': 'Pulsa Reguler 10.000'},
+    {'id': 107, 'name': "Axis Pulsa 25.000", 'price': 25000, 'category': 'Axis', 'type': 'Pulsa', 'data': 'Rp 25.000', 'validity': '+30 Hari', 'details': 'Pulsa Reguler 25.000'},
+    {'id': 110, 'name': "Axis Pulsa 50.000", 'price': 50000, 'category': 'Axis', 'type': 'Pulsa', 'data': 'Rp 50.000', 'validity': '+45 Hari', 'details': 'Pulsa Reguler 50.000'},
+    {'id': 115, 'name': "Axis Pulsa 100.000", 'price': 100000, 'category': 'Axis', 'type': 'Pulsa', 'data': 'Rp 100.000', 'validity': '+60 Hari', 'details': 'Pulsa Reguler 100.000'},
+    {'id': 195, 'name': "Indosat Pulsa 10.000", 'price': 12000, 'category': 'Indosat', 'type': 'Pulsa', 'data': 'Rp 10.000', 'validity': '+15 Hari', 'details': 'Pulsa Reguler 10.000'},
+    {'id': 199, 'name': "Indosat Pulsa 25.000", 'price': 26000, 'category': 'Indosat', 'type': 'Pulsa', 'data': 'Rp 25.000', 'validity': '+30 Hari', 'details': 'Pulsa Reguler 25.000'},
+    {'id': 202, 'name': "Indosat Pulsa 50.000", 'price': 50000, 'category': 'Indosat', 'type': 'Pulsa', 'data': 'Rp 50.000', 'validity': '+45 Hari', 'details': 'Pulsa Reguler 50.000'},
+    {'id': 207, 'name': "Indosat Pulsa 100.000", 'price': 100000, 'category': 'Indosat', 'type': 'Pulsa', 'data': 'Rp 100.000', 'validity': '+60 Hari', 'details': 'Pulsa Reguler 100.000'},
+    {'id': 280, 'name': "Telkomsel Pulsa 10.000", 'price': 11000, 'category': 'Telkomsel', 'type': 'Pulsa', 'data': 'Rp 10.000', 'validity': 'N/A', 'details': 'Pulsa Reguler 10.000'},
+    {'id': 283, 'name': "Telkomsel Pulsa 25.000", 'price': 25000, 'category': 'Telkomsel', 'type': 'Pulsa', 'data': 'Rp 25.000', 'validity': 'N/A', 'details': 'Pulsa Reguler 25.000'},
+    {'id': 288, 'name': "Telkomsel Pulsa 50.000", 'price': 50000, 'category': 'Telkomsel', 'type': 'Pulsa', 'data': 'Rp 50.000', 'validity': 'N/A', 'details': 'Pulsa Reguler 50.000'},
+    {'id': 298, 'name': "Telkomsel Pulsa 100.000", 'price': 99000, 'category': 'Telkomsel', 'type': 'Pulsa', 'data': 'Rp 100.000', 'validity': 'N/A', 'details': 'Pulsa Reguler 100.000'},
+    {'id': 142, 'name': "By.U Pulsa 10.000", 'price': 11000, 'category': 'By.U', 'type': 'Pulsa', 'data': 'Rp 10.000', 'validity': 'N/A', 'details': 'Pulsa By.U 10.000'},
+    {'id': 145, 'name': "By.U Pulsa 25.000", 'price': 25000, 'category': 'By.U', 'type': 'Pulsa', 'data': 'Rp 25.000', 'validity': 'N/A', 'details': 'Pulsa By.U 25.000'},
+    {'id': 148, 'name': "By.U Pulsa 50.000", 'price': 50000, 'category': 'By.U', 'type': 'Pulsa', 'data': 'Rp 50.000', 'validity': 'N/A', 'details': 'Pulsa By.U 50.000'},
 ]
 
 # ==============================================================================
@@ -274,10 +292,10 @@ for key in get_products(special_type='Akrab'): PAKET_DESCRIPTIONS[key] = create_
 for key in get_products(special_type='Circle'): PAKET_DESCRIPTIONS[key] = create_circle_description(key)
 for key in get_products(special_type='BebasPuas'): PAKET_DESCRIPTIONS[key] = create_bebaspuas_description(key)
 PAKET_DESCRIPTIONS["bantuan"] = ("<b>Pusat Bantuan & Informasi</b> 🆘\n\n"
-                                     "Selamat datang di pusat bantuan Pulsa Net Bot.\n\n"
-                                     "Jika Anda mengalami kendala teknis, memiliki pertanyaan seputar produk, atau tertarik untuk menjadi reseller, jangan ragu untuk menghubungi Admin kami.\n\n"
-                                     "Gunakan perintah /start untuk kembali ke menu utama kapan saja.\n\n"
-                                     "📞 <b>Admin:</b> @hexynos\n" "🌐 <b>Website Resmi:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
+                                      "Selamat datang di pusat bantuan Pulsa Net Bot.\n\n"
+                                      "Jika Anda mengalami kendala teknis, memiliki pertanyaan seputar produk, atau tertarik untuk menjadi reseller, jangan ragu untuk menghubungi Admin kami.\n\n"
+                                      "Gunakan perintah /start untuk kembali ke menu utama kapan saja.\n\n"
+                                      "📞 <b>Admin:</b> @hexynos\n" "🌐 <b>Website Resmi:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
 
 # ==============================================================================
 # FUNGSI-FUNGSI FITUR TOOLS (HELPER FUNCTIONS)
@@ -802,7 +820,8 @@ async def show_youtube_quality_options(update: Update, context: ContextTypes.DEF
         )
         await track_message(context, status_msg)
         
-        ydl_opts = get_ytdlp_options(url) # <-- MODIFIED v16.15: Pass URL
+        # --- FIX: Pass URL to get_ytdlp_options ---
+        ydl_opts = get_ytdlp_options(url=url)
         
         try:
             info_dict = await asyncio.to_thread(run_yt_dlp_sync, ydl_opts, url, download=False)
@@ -822,7 +841,7 @@ async def show_youtube_quality_options(update: Update, context: ContextTypes.DEF
                     f"Error Message: {str(e)[:200]}\n\n"
                     "ACTIONS REQUIRED:\n"
                     "1. Export fresh cookies dari browser (gunakan extension 'Get cookies.txt LOCALLY')\n"
-                    "2. Convert ke base64: base64 youtube_cookies.txt\n"
+                    f"2. Convert ke base64: base64 {YOUTUBE_COOKIE_FILE}\n"
                     "3. Update environment variable YOUTUBE_COOKIES_BASE64\n"
                     "4. Restart bot\n\n"
                     "Panduan lengkap: https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies"
@@ -860,7 +879,7 @@ async def show_youtube_quality_options(update: Update, context: ContextTypes.DEF
             keyboard.append([InlineKeyboardButton(label, callback_data=f"yt_dl|{video_id}|{f['format_id']}")])
         
         audio_formats = sorted([f for f in formats if f.get('acodec') != 'none' and f.get('vcodec') == 'none' and 
-                                (not f.get('filesize') or f.get('filesize') <= MAX_UPLOAD_FILE_SIZE_BYTES)], 
+                                (not f.get('filesize') or f.get('filesize') <= MAX_UPLOAD_FILE_SIZE_BYTES)],  
                                 key=lambda x: x.get('filesize') or x.get('filesize_approx') or 0, reverse=True)
         if audio_formats:
             best_audio = audio_formats[0]
@@ -913,7 +932,9 @@ async def handle_youtube_download_choice(update: Update, context: ContextTypes.D
                        for btn in row if hasattr(btn, 'callback_data') and btn.callback_data == query.data)
 
         file_path_template = f"{video_id}_{format_id}.%(ext)s"
-        ydl_opts = get_ytdlp_options(url) # <-- MODIFIED v16.15: Pass URL
+        
+        # --- FIX: Pass URL to get_ytdlp_options ---
+        ydl_opts = get_ytdlp_options(url=url) 
         ydl_opts['outtmpl'] = file_path_template
         ydl_opts['max_filesize'] = MAX_UPLOAD_FILE_SIZE_BYTES
 
@@ -969,10 +990,10 @@ async def handle_youtube_download_choice(update: Update, context: ContextTypes.D
         with open(file_path, 'rb') as f:
             if is_video:
                 sent_file = await context.bot.send_video(update.effective_chat.id, video=f, caption=caption,  
-                                                         parse_mode=ParseMode.HTML, read_timeout=300, write_timeout=300)
+                                                          parse_mode=ParseMode.HTML, read_timeout=300, write_timeout=300)
             else:
                 sent_file = await context.bot.send_audio(update.effective_chat.id, audio=f, caption=caption,  
-                                                         parse_mode=ParseMode.HTML, read_timeout=300, write_timeout=300)
+                                                          parse_mode=ParseMode.HTML, read_timeout=300, write_timeout=300)
         await track_message(context, sent_file)
         
         try:
@@ -1226,7 +1247,7 @@ async def generate_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_admin_log(context, e, update, "generate_password")
         await query.edit_message_text("Maaf, terjadi kesalahan saat membuat password.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
 
-# --- FITUR BARU & PERBAIKAN: Media Downloader (v16.17) ---
+# --- FITUR BARU & PERBAIKAN: Media Downloader ---
 async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str):
     status_msg = None
     downloaded_files = [] # Untuk melacak semua file yang diunduh
@@ -1235,7 +1256,9 @@ async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TY
         await track_message(context, status_msg)
 
         file_path_template = f"media_{update.effective_message.id}_%(id)s.%(ext)s"
-        ydl_opts = get_ytdlp_options(url) # <-- MODIFIED v16.15: Pass URL
+        
+        # --- FIX: Pass URL to get_ytdlp_options ---
+        ydl_opts = get_ytdlp_options(url=url)
         ydl_opts['outtmpl'] = file_path_template
         ydl_opts['max_filesize'] = MAX_UPLOAD_FILE_SIZE_BYTES
         
@@ -1248,43 +1271,44 @@ async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TY
         except (yt_dlp.utils.DownloadError, yt_dlp.utils.ExtractorError) as e:
             error_str = str(e).lower()
             reply_text = "Maaf, terjadi kesalahan yang tidak diketahui saat mengunduh."
-            admin_log_sent = False # <-- MODIFIED v16.16
+            admin_log_sent = False 
             
-            # --- MODIFIED v16.15: Penanganan error cookie/login yang lebih spesifik ---
-            if ('unsupported url' in error_str and 'login' in url) or \
+            # --- START PERBAIKAN: Penanganan error yang lebih spesifik ---
+            if '[instagram]' in error_str and 'no video formats found' in error_str:
+                reply_text = (
+                    "❌ <b>Gagal Mengunduh.</b>\n\n"
+                    "Postingan ini sepertinya tidak mengandung video, mungkin hanya foto. Bot ini sedang difokuskan untuk mengunduh video dari tautan media umum.\n\n"
+                    "Penyebab lain bisa jadi karena postingan ini privat atau Instagram baru saja mengubah sistemnya."
+                )
+                admin_alert = f"Gagal mengunduh dari Instagram ({url}) karena 'No video formats found'. Kemungkinan ini adalah postingan foto, privat, atau extractor yt-dlp perlu diperbarui."
+                await send_admin_log(context, e, update, "handle_media_download (Instagram No Video)", custom_message=admin_alert)
+                admin_log_sent = True
+            # --- AKHIR PERBAIKAN ---
+
+            elif ('unsupported url' in error_str and 'login' in url) or \
                ('this content is only available for registered users' in error_str) or \
-               ('private' in error_str or 'login required' in error_str) or \
-               ('no video formats found' not in error_str and 'login' in error_str): # Deteksi 'login' umum
-                reply_text = "❌ <b>Gagal!</b> Konten ini bersifat pribadi atau memerlukan login."
-                admin_alert = (f"GAGAL AUTENTIKASI: Konten dari {url} memerlukan login. "
-                               f"Pastikan GENERIC_COOKIES_BASE64 sudah diatur dan valid untuk situs ini. Error: {e}")
+               ('private' in error_str or 'login required' in error_str):
+                reply_text = "❌ <b>Gagal!</b> Konten ini bersifat pribadi atau memerlukan login.\n\n" \
+                             "<i>Pastikan Admin telah mengonfigurasi cookies untuk situs ini (Instagram, Twitter, dll.).</i>"
+                admin_alert = f"Gagal mengunduh {url} karena masalah otentikasi. " \
+                              f"Pastikan GENERIC_COOKIES_BASE64 sudah diatur dan valid untuk situs ini. Error: {e}"
                 await send_admin_log(context, e, update, "handle_media_download (Auth Error)", custom_message=admin_alert)
-                admin_log_sent = True # <-- MODIFIED v16.16
+                admin_log_sent = True
             
             elif 'no video could be found' in error_str or 'no formats' in error_str or 'is not a valid URL' in error_str:
-                 # v16.18 menangani 'no video formats found', jadi ini untuk error 'no video could be found'
-                if 'no video formats found' not in error_str:
-                   reply_text = "❌ <b>Gagal!</b> Link ini sepertinya tidak mengandung media (video/gambar) yang dapat diunduh."
-                # Jika 'no video formats found', kita biarkan (krn v16.18), tapi jika error lain, set reply_text
-                
+                reply_text = "❌ <b>Gagal!</b> Link ini sepertinya tidak mengandung media (video/gambar) yang dapat diunduh."
             elif 'unavailable' in error_str:
                 reply_text = "❌ <b>Gagal!</b> Konten ini tidak tersedia atau telah dihapus."
             
             logger.warning(f"yt-dlp error for URL {url}: {e}")
 
-            # --- MODIFIED v16.16: Kirim *semua* error unduhan ke admin ---
             if not admin_log_sent:
                 admin_alert = f"Gagal mengunduh {url}. Error: {e}"
                 await send_admin_log(context, e, update, "handle_media_download (DownloadError)", custom_message=admin_alert)
-            # --- AKHIR MODIFIED v16.16 ---
 
-            # Jika error BUKAN 'no video formats found' (yang kita harapkan untuk foto)
-            if 'no video formats found' not in error_str:
-                if status_msg:
-                    await status_msg.edit_text(reply_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-                return
-            # Jika errorNYA ADALAH 'no video formats found', kita tetap lanjutkan,
-            # karena kita berharap logika v16.17 akan menemukan FOTO.
+            if status_msg:
+                await status_msg.edit_text(reply_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+            return
 
         # --- START FIX v16.17: Logika pengambilan file yang lebih profesional ---
         files_to_process = []
@@ -1313,17 +1337,7 @@ async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TY
         if not files_to_process:
             logger.warning(f"info_dict structure keys for {url}: {list(info_dict.keys())}")
             logger.warning(f"info_dict 'requested_downloads' content: {info_dict.get('requested_downloads')}")
-            # Jika kita sampai di sini SETELAH error 'no video formats', itu wajar, tapi jika tidak ada error, ini masalah.
-            current_error_str = str(locals().get('e', ''))
-            if 'no video formats found' not in current_error_str:
-                 raise ValueError("Tidak ada file yang berhasil diunduh dari metadata yt-dlp. (files_to_process empty)")
-            else:
-                # Ini adalah kasus di mana 'no video formats' terjadi DAN kita tidak menemukan foto.
-                # Ini berarti postingan itu mungkin teks / link / dll.
-                reply_text = "❌ <b>Gagal!</b> Link ini sepertinya tidak mengandung media (video/gambar) yang dapat diunduh."
-                if status_msg:
-                    await status_msg.edit_text(reply_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-                return
+            raise ValueError("Tidak ada file yang berhasil diunduh dari metadata yt-dlp. (files_to_process empty)")
         # --- END FIX v16.17 ---
 
         await status_msg.edit_text(f"📤 <b>Mengirim {len(files_to_process)} file...</b>", parse_mode=ParseMode.HTML)
@@ -1382,8 +1396,8 @@ async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TY
         if status_msg:
             try:
                 await status_msg.edit_text("Maaf, terjadi kesalahan teknis yang tidak terduga. Admin telah diberitahu.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-            except BadRequest:
-                pass # Pesan mungkin sudah dihapus
+            except Exception:
+                pass # Gagal mengedit pesan status, abaikan
     finally:
         for f in downloaded_files:
             if os.path.exists(f):
@@ -1393,12 +1407,12 @@ async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TY
                     logger.error(f"Gagal menghapus file media {f}: {e}")
 
 # ==============================================================================
-# 🚀 FUNGSI UTAMA & FUNGSI BARU UNTUK COOKIES (v16.15 / v16.18)
+# 🚀 FUNGSI UTAMA & FUNGSI BARU UNTUK COOKIES
 # ==============================================================================
 
 def validate_cookie_file(cookie_file: str, is_youtube: bool = False) -> bool:
     """
-    Validasi file cookies - cek format dan cookies penting.
+    Validasi file cookies.
     Return True jika valid, False jika ada masalah.
     """
     if not Path(cookie_file).exists():
@@ -1415,18 +1429,17 @@ def validate_cookie_file(cookie_file: str, is_youtube: bool = False) -> bool:
             
         # Cek format Netscape
         if '# Netscape HTTP Cookie File' not in content:
-            logger.warning(f"⚠️ Cookie file {cookie_file} bukan format Netscape!")
+            logger.warning(f"⚠️ {cookie_file} bukan format Netscape!")
             logger.warning("Pastikan Anda export dengan extension/tool yang benar")
         
-        # --- Logika Cek Cookie Spesifik ---
-        if is_youtube:
-            # Cookies penting yang harus ada
-            required_cookies = ['VISITOR_INFO1_LIVE', 'YSC']
-            important_cookies = ['LOGIN_INFO', '__Secure-3PSID', '__Secure-3PAPISID']
-        else:
-            # Untuk generic, kita hanya cek cookies login Instagram (contoh)
-            required_cookies = ['sessionid', 'ds_user_id'] # Instagram
-            important_cookies = ['auth_token', 'ct0'] # Twitter
+        if not is_youtube:
+            # Untuk cookies generik, cek format dan non-empty sudah cukup
+            logger.info(f"✅ Validasi dasar {cookie_file} passed")
+            return True
+
+        # --- Validasi spesifik YouTube ---
+        required_cookies = ['VISITOR_INFO1_LIVE', 'YSC']
+        important_cookies = ['LOGIN_INFO', '__Secure-3PSID', '__Secure-3PAPISID']
         
         lines = content.split('\n')
         found_cookies = {cookie: False for cookie in required_cookies + important_cookies}
@@ -1448,19 +1461,18 @@ def validate_cookie_file(cookie_file: str, is_youtube: bool = False) -> bool:
                     except ValueError:
                         pass
         
-        # Cek cookies wajib (khusus YouTube)
-        if is_youtube:
-            missing_required = [c for c in required_cookies if not found_cookies[c]]
-            if missing_required:
-                logger.error(f"❌ Cookies YouTube wajib tidak ditemukan: {', '.join(missing_required)}")
-                logger.error("Export ulang cookies dari browser yang sudah login YouTube!")
-                return False
+        # Cek cookies wajib
+        missing_required = [c for c in required_cookies if not found_cookies[c]]
+        if missing_required:
+            logger.error(f"❌ Cookies YouTube wajib tidak ditemukan: {', '.join(missing_required)}")
+            logger.error("Export ulang cookies dari browser yang sudah login YouTube!")
+            return False
         
         # Cek cookies penting (warning saja)
         missing_important = [c for c in important_cookies if not found_cookies[c]]
-        if missing_important and is_youtube: # Hanya warning untuk YouTube
+        if missing_important:
             logger.warning(f"⚠️ Cookies YouTube penting tidak ada: {', '.join(missing_important)}")
-            logger.warning("Bot mungkin mengalami masalah dengan video tertentu")
+            logger.warning("Bot mungkin mengalami masalah dengan video tertentu (age restricted, etc)")
         
         # Cek expiry date
         current_timestamp = int(datetime.now().timestamp())
@@ -1469,71 +1481,63 @@ def validate_cookie_file(cookie_file: str, is_youtube: bool = False) -> bool:
                 continue
                 
             if expiry < current_timestamp:
-                logger.error(f"❌ Cookie '{cookie_name}' di {cookie_file} sudah EXPIRED!")
+                logger.error(f"❌ Cookie YouTube '{cookie_name}' sudah EXPIRED!")
                 logger.error("Export cookies baru dari browser!")
                 return False
             
             # Warning jika akan expired dalam 7 hari
             days_remaining = (expiry - current_timestamp) / 86400
             if days_remaining < 7:
-                logger.warning(f"⚠️ Cookie '{cookie_name}' di {cookie_file} akan expired dalam {days_remaining:.1f} hari!")
+                logger.warning(f"⚠️ Cookie YouTube '{cookie_name}' akan expired dalam {days_remaining:.1f} hari!")
                 logger.warning("Segera persiapkan cookies baru!")
         
         logger.info(f"✅ Semua validasi cookies {cookie_file} passed")
         return True
         
     except Exception as e:
-        logger.error(f"Error saat validasi cookies {cookie_file}: {e}")
+        logger.error(f"Error saat validasi {cookie_file}: {e}")
         return False
 
 def setup_all_cookies():
     """
-    Setup semua cookies (YouTube dan Generik) dengan validasi.
+    Setup semua cookies (YouTube & Generik) dari environment variables.
     Return (youtube_valid, generic_valid)
     """
-    # 1. Setup YouTube Cookies
-    youtube_cookie_data_base64 = os.environ.get("YOUTUBE_COOKIES_BASE64")
-    youtube_cookie_file = 'youtube_cookies.txt'
-    youtube_valid = False
+    youtube_cookie_b64 = os.environ.get("YOUTUBE_COOKIES_BASE64")
+    generic_cookie_b64 = os.environ.get("GENERIC_COOKIES_BASE64")
     
-    if not youtube_cookie_data_base64:
+    youtube_valid = False
+    generic_valid = False
+
+    # --- Setup YouTube Cookies ---
+    if not youtube_cookie_b64:
         logger.error("❌ YOUTUBE_COOKIES_BASE64 tidak ditemukan!")
-        logger.error("Fitur YouTube Downloader tidak akan berfungsi.")
+        logger.error("Fitur Downloader YouTube tidak akan berfungsi.")
     else:
         try:
-            cookie_data = base64.b64decode(youtube_cookie_data_base64).decode('utf-8')
-            with open(youtube_cookie_file, 'w') as f:
+            cookie_data = base64.b64decode(youtube_cookie_b64).decode('utf-8')
+            with open(YOUTUBE_COOKIE_FILE, 'w') as f:
                 f.write(cookie_data)
-            logger.info(f"✅ File {youtube_cookie_file} berhasil dibuat")
-            if validate_cookie_file(youtube_cookie_file, is_youtube=True):
-                youtube_valid = True
-            else:
-                 logger.warning(f"⚠️ Cookies YouTube di {youtube_cookie_file} mungkin tidak valid atau sudah expired!")
+            logger.info(f"✅ File {YOUTUBE_COOKIE_FILE} berhasil dibuat")
+            youtube_valid = validate_cookie_file(YOUTUBE_COOKIE_FILE, is_youtube=True)
         except base64.binascii.Error:
-            logger.error(f"❌ YOUTUBE_COOKIES_BASE64 bukan base64 yang valid!")
+            logger.error("❌ YOUTUBE_COOKIES_BASE64 bukan base64 yang valid!")
         except Exception as e:
             logger.error(f"❌ Gagal setup cookies YouTube: {e}")
 
-    # 2. Setup Generic Cookies
-    generic_cookie_data_base64 = os.environ.get("GENERIC_COOKIES_BASE64")
-    generic_cookie_file = 'generic_cookies.txt'
-    generic_valid = False
-
-    if not generic_cookie_data_base64:
-        logger.error("❌ GENERIC_COOKIES_BASE64 tidak ditemukan!")
-        logger.error("Fitur Media Downloader (IG, Twitter, dll) tidak akan berfungsi untuk konten privat.")
+    # --- Setup Generic Cookies ---
+    if not generic_cookie_b64:
+        logger.warning("⚠️ GENERIC_COOKIES_BASE64 tidak ditemukan!")
+        logger.warning("Fitur Downloader Media (IG, Twitter, dll) mungkin tidak akan berfungsi untuk konten privat.")
     else:
         try:
-            cookie_data = base64.b64decode(generic_cookie_data_base64).decode('utf-8')
-            with open(generic_cookie_file, 'w') as f:
+            cookie_data = base64.b64decode(generic_cookie_b64).decode('utf-8')
+            with open(GENERIC_COOKIE_FILE, 'w') as f:
                 f.write(cookie_data)
-            logger.info(f"✅ File {generic_cookie_file} berhasil dibuat")
-            if validate_cookie_file(generic_cookie_file, is_youtube=False):
-                generic_valid = True
-            else:
-                logger.warning(f"⚠️ Cookies Generik di {generic_cookie_file} mungkin tidak valid atau sudah expired!")
+            logger.info(f"✅ File {GENERIC_COOKIE_FILE} berhasil dibuat")
+            generic_valid = validate_cookie_file(GENERIC_COOKIE_FILE, is_youtube=False)
         except base64.binascii.Error:
-            logger.error(f"❌ GENERIC_COOKIES_BASE64 bukan base64 yang valid!")
+            logger.error("❌ GENERIC_COOKIES_BASE64 bukan base64 yang valid!")
         except Exception as e:
             logger.error(f"❌ Gagal setup cookies generik: {e}")
 
@@ -1557,21 +1561,22 @@ def get_ytdlp_options(url: str = None):
         # Tambahan untuk bypass restriction
         'geo_bypass': True,
         'age_limit': 21,  # Bypass age restriction
-        
-        # --- START FIX v16.18 ---
-        'ignore_no_formats_error': True, # Supaya tidak error jika post hanya berisi FOTO
-        # --- END FIX v16.18 ---
     }
     
-    # --- START COOKIE LOGIC v16.15 ---
+    # --- START COOKIE LOGIC ---
     cookie_file_to_use = None
-    if url and ('youtube.com' in url or 'youtu.be' in url):
-        cookie_file_to_use = 'youtube_cookies.txt'
-    else:
-        cookie_file_to_use = 'generic_cookies.txt' # Default ke generic
-    
-    if cookie_file_to_use and os.path.exists(cookie_file_to_use):
+    if url:
+        if 'youtube.com' in url or 'youtu.be' in url:
+            if Path(YOUTUBE_COOKIE_FILE).exists():
+                cookie_file_to_use = YOUTUBE_COOKIE_FILE
+        else:
+            # Untuk semua situs lain (Insta, Twitter, dll.)
+            if Path(GENERIC_COOKIE_FILE).exists():
+                cookie_file_to_use = GENERIC_COOKIE_FILE
+
+    if cookie_file_to_use:
         opts['cookiefile'] = cookie_file_to_use
+        logger.info(f"Menggunakan cookie file: {cookie_file_to_use} for {url}")
     # --- END COOKIE LOGIC ---
 
     return opts
@@ -1586,7 +1591,7 @@ def main():
     if not ADMIN_ID:
         logger.warning("TELEGRAM_ADMIN_ID tidak diatur. Laporan eror tidak akan dikirimkan ke admin.")
 
-    # --- MODIFIED v16.15: Enhanced cookie setup dengan validasi ---
+    # Enhanced cookie setup dengan validasi
     youtube_valid, generic_valid = setup_all_cookies()
 
     # --- Graceful Shutdown & Timeout ---
@@ -1617,26 +1622,25 @@ def main():
     bot_application.add_handler(CallbackQueryHandler(generate_password, pattern='^gen_password$'))
 
 
-    print(f"🤖 Bot Pulsa Net (v16.18 - Fix Photo-Only Post Error) sedang berjalan...")
+    print(f"🤖 Bot Pulsa Net (v16.17 - Professional Photo & Album Downloader) sedang berjalan...")
     
-    # --- MODIFIED v16.15: Laporan Status Cookie Baru ---
+    # --- Laporan Status Cookie Baru ---
     if youtube_valid:
         print("✅ YouTube Downloader: AKTIF")
     else:
-        print("❌ YouTube Downloader: NONAKTIF (cookies invalid/missing)")
+        print("❌ YouTube Downloader: NONAKTIF (YOUTUBE_COOKIES_BASE64 invalid/hilang)")
     
     if generic_valid:
         print("✅ Generic Media Downloader (IG, dll.): AKTIF")
     else:
-        print("❌ Generic Media Downloader (IG, dll.): NONAKTIF (cookies invalid/missing)")
+        print("⚠️ Generic Media Downloader (IG, dll.): MODE TERBATAS (GENERIC_COOKIES_BASE64 invalid/hilang)")
 
     if not youtube_valid or not generic_valid:
         logger.error("=" * 60)
-        logger.error("PERINGATAN: Satu atau lebih fitur unduh media mungkin NONAKTIF atau terbatas.")
-        logger.error("Segera perbaiki masalah cookies (YOUTUBE_COOKIES_BASE64 / GENERIC_COOKIES_BASE64) untuk fungsionalitas penuh.")
+        logger.error("PERINGATAN: Satu atau lebih fitur unduh media mungkin TIDAK AKAN BEKERJA!")
+        logger.error("Segera perbaiki masalah cookies untuk mengaktifkan semua fitur.")
         logger.error("=" * 60)
-    # --- END MODIFIED v16.15 ---
-    
+        
     print("💡 Tekan Ctrl+C untuk shutdown dengan aman")
     print("=" * 60)
 
