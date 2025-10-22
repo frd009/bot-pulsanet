@@ -2,7 +2,11 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
 # Developer: frd009
-# Versi: 16.19 (Comprehensive Media Fix)
+# Versi: 16.20 (Graceful Shutdown Fix)
+#
+# CHANGELOG v16.20:
+# - FIX: Mengatasi NameError: name 'SIGTERM' is not defined dengan memanggil
+#   signal.SIGTERM secara benar di dalam fungsi main().
 #
 # CHANGELOG v16.19:
 # - ADD: Library 'filetype' untuk deteksi media yang lebih akurat berdasarkan MIME type.
@@ -43,7 +47,7 @@ import yt_dlp
 import phonenumbers
 from phonenumbers import carrier, geocoder, phonenumberutil
 import pycountry
-import filetype  # <-- PERBAIKAN: Library untuk deteksi MIME type
+import filetype
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
@@ -1228,243 +1232,6 @@ async def generate_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await send_admin_log(context, e, update, "generate_password")
         await query.edit_message_text("Maaf, terjadi kesalahan saat membuat password.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-
-# ==============================================================================
-# FUNGSI 2 (BARU): HELPER UNTUK DETEKSI TIPE FILE
-# ==============================================================================
-
-def detect_media_type(file_path: str) -> str:
-    """
-    Deteksi apakah file adalah foto atau video menggunakan MIME type.
-    Returns: 'photo', 'video', 'document', atau 'unknown'
-    """
-    try:
-        # Metode 1: Gunakan library filetype (lebih reliable)
-        kind = filetype.guess(file_path)
-        if kind is not None:
-            if kind.mime.startswith('image/'):
-                return 'photo'
-            elif kind.mime.startswith('video/'):
-                return 'video'
-        
-        # Metode 2: Fallback ke ekstensi file
-        ext = Path(file_path).suffix.lower()
-        image_exts = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp']
-        video_exts = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.flv']
-        
-        if ext in image_exts:
-            return 'photo'
-        elif ext in video_exts:
-            return 'video'
-        else:
-            return 'document'
-            
-    except Exception as e:
-        logger.error(f"Error detecting media type for {file_path}: {e}")
-        return 'unknown'
-
-
-# ==============================================================================
-# FUNGSI 3 (BARU): PERBAIKAN handle_media_download (VERSI LENGKAP)
-# ==============================================================================
-
-async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str):
-    """
-    FIXED VERSION: Download media (foto & video) dari Instagram, Twitter, TikTok, dll.
-    """
-    status_msg = None
-    downloaded_files = []
-    
-    try:
-        status_msg = await update.message.reply_text(
-            "📥 <b>Mengunduh media...</b> Ini mungkin memakan waktu.",
-            parse_mode=ParseMode.HTML
-        )
-        await track_message(context, status_msg)
-
-        file_path_template = f"media_{update.effective_message.id}_%(id)s.%(ext)s"
-        
-        ydl_opts = get_ytdlp_options(url=url)
-        ydl_opts['outtmpl'] = file_path_template
-        ydl_opts['max_filesize'] = MAX_UPLOAD_FILE_SIZE_BYTES
-        
-        info_dict = None
-        try:
-            info_dict = await asyncio.to_thread(run_yt_dlp_sync, ydl_opts, url, download=True)
-            if not info_dict:
-                raise yt_dlp.utils.DownloadError("Proses unduh tidak mengembalikan informasi.")
-
-        except (yt_dlp.utils.DownloadError, yt_dlp.utils.ExtractorError) as e:
-            error_str = str(e).lower()
-            reply_text = "Maaf, terjadi kesalahan yang tidak diketahui saat mengunduh."
-            admin_log_sent = False
-            
-            # === PERBAIKAN: Deteksi error "no video formats" untuk foto ===
-            if 'no video formats found' in error_str or 'no formats found' in error_str:
-                # Coba lagi dengan force photo extraction
-                logger.warning(f"⚠️ No video format found, retrying as photo-only post...")
-                
-                ydl_opts_retry = get_ytdlp_options(url=url)
-                ydl_opts_retry['outtmpl'] = file_path_template
-                ydl_opts_retry['format'] = 'best'  # Paksa best quality
-                ydl_opts_retry['ignoreerrors'] = True  # Abaikan error format
-                
-                try:
-                    info_dict = await asyncio.to_thread(run_yt_dlp_sync, ydl_opts_retry, url, download=True)
-                    if info_dict:
-                        logger.info("✅ Berhasil retry sebagai foto!")
-                        # Lanjutkan ke processing file
-                    else:
-                        raise e  # Tetap gagal
-                except Exception as retry_error:
-                    reply_text = "❌ <b>Gagal!</b> Postingan ini mungkin hanya berisi foto yang tidak dapat diekstrak, atau link sudah dihapus."
-                    await status_msg.edit_text(reply_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-                    return
-            
-            elif ('unsupported url' in error_str and 'login' in url) or \
-                 ('this content is only available for registered users' in error_str) or \
-                 ('private' in error_str or 'login required' in error_str):
-                reply_text = "❌ <b>Gagal!</b> Konten ini bersifat pribadi atau memerlukan login.\n\n" \
-                             "<i>Pastikan Admin telah mengonfigurasi cookies untuk situs ini.</i>"
-                admin_alert = f"Gagal mengunduh {url} karena masalah otentikasi. " \
-                              f"Pastikan GENERIC_COOKIES_BASE64 sudah diatur dan valid. Error: {e}"
-                await send_admin_log(context, e, update, "handle_media_download (Auth Error)", custom_message=admin_alert)
-                admin_log_sent = True
-            
-            elif 'is not a valid url' in error_str:
-                reply_text = "❌ <b>Gagal!</b> Link ini tidak valid atau platform tidak didukung."
-            elif 'unavailable' in error_str:
-                reply_text = "❌ <b>Gagal!</b> Konten ini tidak tersedia atau telah dihapus."
-            
-            logger.warning(f"yt-dlp error for URL {url}: {e}")
-
-            if not admin_log_sent:
-                await send_admin_log(context, e, update, "handle_media_download (DownloadError)", custom_message=f"URL: {url}")
-
-            if status_msg:
-                await status_msg.edit_text(reply_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-            return
-
-        # === PERBAIKAN: Validasi entries dengan lebih baik ===
-        files_to_process = []
-        
-        if info_dict.get('requested_downloads'):
-            files_to_process = info_dict['requested_downloads']
-        elif info_dict.get('entries'):
-            await status_msg.edit_text(
-                f"📥 <b>Album/Carousel terdeteksi.</b> Mengunduh {len(info_dict['entries'])} file...",
-                parse_mode=ParseMode.HTML
-            )
-            # Filter entries yang valid
-            for entry in info_dict.get('entries', []):
-                if not entry:
-                    continue
-                if entry.get('filepath') or entry.get('_filename'):
-                    files_to_process.append(entry)
-                elif entry.get('thumbnail') and not entry.get('url'):
-                    logger.warning(f"Entry hanya memiliki thumbnail: {entry.get('id')}")
-                    
-        elif info_dict.get('filepath') or info_dict.get('_filename'):
-            if info_dict.get('_filename') and not info_dict.get('filepath'):
-                info_dict['filepath'] = info_dict.get('_filename')
-            files_to_process = [info_dict]
-
-        if not files_to_process:
-            logger.error(f"❌ files_to_process kosong untuk {url}")
-            logger.error(f"info_dict keys: {list(info_dict.keys())}")
-            raise ValueError("Tidak ada file yang berhasil diunduh dari metadata yt-dlp.")
-
-        await status_msg.edit_text(
-            f"📤 <b>Mengirim {len(files_to_process)} file...</b>",
-            parse_mode=ParseMode.HTML
-        )
-        
-        # === PERBAIKAN KRITIS: Deteksi tipe media dengan benar ===
-        for i, file_info in enumerate(files_to_process):
-            file_path = file_info.get('filepath') or file_info.get('_filename')
-            
-            if not file_path or not os.path.exists(file_path):
-                logger.warning(f"⚠️ File path not found for entry {i}, skipping. Info: {file_info.get('id', 'N/A')}")
-                continue
-
-            downloaded_files.append(file_path)
-            
-            title = info_dict.get('title', 'Media')
-            uploader = info_dict.get('uploader', 'Tidak diketahui')
-            entry_title = file_info.get('title', title)
-
-            if entry_title == 'NA' or entry_title == title or not entry_title:
-                caption = f"<b>{safe_html(title)}</b> ({i+1}/{len(files_to_process)})\n"
-            else:
-                caption = f"<b>{safe_html(entry_title)}</b>\n<i>(dari Album: {safe_html(title)})</i>\n"
-            
-            caption += f"<i>oleh {safe_html(uploader)}</i>\n\nDiunduh dengan @{context.bot.username}"
-            
-            # === GUNAKAN FUNGSI DETEKSI BARU ===
-            media_type = detect_media_type(file_path)
-            
-            with open(file_path, 'rb') as f:
-                if media_type == 'photo':
-                    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.UPLOAD_PHOTO)
-                    sent_file = await context.bot.send_photo(
-                        update.effective_chat.id,
-                        photo=f,
-                        caption=caption,
-                        parse_mode=ParseMode.HTML
-                    )
-                elif media_type == 'video':
-                    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.UPLOAD_VIDEO)
-                    sent_file = await context.bot.send_video(
-                        update.effective_chat.id,
-                        video=f,
-                        caption=caption,
-                        parse_mode=ParseMode.HTML
-                    )
-                else:  # document atau unknown
-                    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.UPLOAD_DOCUMENT)
-                    sent_file = await context.bot.send_document(
-                        update.effective_chat.id,
-                        document=f,
-                        caption=caption,
-                        parse_mode=ParseMode.HTML
-                    )
-            
-            await track_message(context, sent_file)
-            await asyncio.sleep(1)
-
-        await status_msg.delete()
-
-        keyboard_next = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔗 Unduh Media Lain", callback_data="ask_for_media_link")],
-            [InlineKeyboardButton("⬅️ Kembali ke Tools", callback_data="main_tools")]
-        ])
-        next_msg = await context.bot.send_message(
-            update.effective_chat.id,
-            "✅ Semua media berhasil diunduh.",
-            reply_markup=keyboard_next
-        )
-        await track_message(context, next_msg)
-            
-    except Exception as e:
-        await send_admin_log(context, e, update, "handle_media_download (General)")
-        if status_msg:
-            try:
-                await status_msg.edit_text(
-                    "Maaf, terjadi kesalahan teknis yang tidak terduga. Admin telah diberitahu.",
-                    reply_markup=keyboard_error_back,
-                    parse_mode=ParseMode.HTML
-                )
-            except Exception:
-                pass
-    finally:
-        for f in downloaded_files:
-            if os.path.exists(f):
-                try:
-                    os.remove(f)
-                except Exception as e:
-                    logger.error(f"Gagal menghapus file media {f}: {e}")
-
-
 # ==============================================================================
 # 🚀 FUNGSI UTAMA & FUNGSI BARU UNTUK COOKIES
 # ==============================================================================
@@ -1585,10 +1352,6 @@ def setup_all_cookies():
 
     return youtube_valid, generic_valid
 
-# ==============================================================================
-# FUNGSI 1 (BARU): PERBAIKAN get_ytdlp_options
-# ==============================================================================
-
 def get_ytdlp_options(url: str = None):
     """
     FIXED VERSION: Return yt-dlp options dengan konfigurasi optimal 
@@ -1624,7 +1387,6 @@ def get_ytdlp_options(url: str = None):
         opts['cookiefile'] = cookie_file_to_use
         logger.info(f"Menggunakan cookie file: {cookie_file_to_use} for {url}")
 
-    # === PERBAIKAN KRITIS ===
     if not is_youtube_url:
         opts['format'] = 'best'
         opts['extract_flat'] = False
@@ -1649,8 +1411,9 @@ def main():
 
     youtube_valid, generic_valid = setup_all_cookies()
 
+    # --- PERBAIKAN: Menggunakan signal.SIGTERM ---
     signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(SIGTERM, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
     print("🔧 Registering shutdown handlers...")
 
     timeout_config = HTTPXRequest(connect_timeout=10.0, read_timeout=20.0, write_timeout=20.0)
@@ -1672,7 +1435,7 @@ def main():
     bot_application.add_handler(CallbackQueryHandler(handle_youtube_download_choice, pattern=r'^yt_dl\|.+'))
     bot_application.add_handler(CallbackQueryHandler(generate_password, pattern='^gen_password$'))
 
-    print(f"🤖 Bot Pulsa Net (v16.19 - Comprehensive Media Fix) sedang berjalan...")
+    print(f"🤖 Bot Pulsa Net (v16.20 - Graceful Shutdown Fix) sedang berjalan...")
     
     if youtube_valid:
         print("✅ YouTube Downloader: AKTIF")
