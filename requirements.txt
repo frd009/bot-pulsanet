@@ -1,7 +1,9 @@
-python-telegram-bot
-yt-dlp
-httpx
-qrcode[pil]
-phonenumbers
-pycountry
-filetype==1.2.0
+python-telegram-bot==20.7
+httpx==0.25.2
+yt-dlp==2023.11.16
+phonenumbers==8.13.22
+pycountry==23.12.11
+qrcode==7.4.2
+pillow==10.1.0
+pytz==2023.3
+backports.zoneinfo==0.2.1
