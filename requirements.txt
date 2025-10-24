@@ -1,9 +1,8 @@
-python-telegram-bot==20.7
-httpx==0.25.2
-yt-dlp==2023.11.16
-phonenumbers==8.13.22
-pycountry==23.12.11
-qrcode==7.4.2
-pillow==10.1.0
-pytz==2023.3
-backports.zoneinfo==0.2.1
+python-telegram-bot>=20.0 # Pastikan versi cukup baru
+yt-dlp
+httpx[http2] # Sertakan dukungan http2 untuk httpx
+qrcode[pil] # Instal qrcode dengan dependensi Pillow
+phonenumbers
+pycountry
+backports.zoneinfo; python_version < "3.9" # Hanya install jika Python < 3.9
+tzdata
