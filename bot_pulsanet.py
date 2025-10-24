@@ -2,22 +2,19 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
 # Developer: frd009
-# Versi: 16.15 (Dual Cookie System & Robust Download Logic)
+# Versi: 16.16 (Perbaikan Stabilitas & Error Handling)
 #
-# CHANGELOG v16.15:
-# - ADD (PROFESSIONAL): Menambahkan sistem dua-cookie. Bot sekarang mendukung
-#   YOUTUBE_COOKIES_BASE64 (khusus YouTube) dan GENERIC_COOKIES_BASE64
-#   (untuk Instagram, Twitter, Facebook, dll.).
-# - FIX (PROFESSIONAL): Memperbaiki `yt_dlp.utils.DownloadError` untuk konten
-#   yang memerlukan login (seperti Instagram) dengan menggunakan
-#   `GENERIC_COOKIES_BASE64` yang baru.
-# - FIX (PROFESSIONAL): Memperbaiki `ValueError: Tidak ada file yang berhasil diunduh`
-#   dengan menambahkan logika fallback yang lebih kuat untuk mendeteksi file yang
-#   diunduh dari `info_dict`, bahkan jika `requested_downloads` kosong.
-# - UPDATE: Fungsi `get_ytdlp_options` sekarang secara cerdas memilih file
-#   cookie yang tepat (YouTube atau Generik) berdasarkan URL yang diproses.
-# - UPDATE: Proses startup bot (main) dan validasi cookie telah diperbarui
-#   untuk menangani dan melaporkan status kedua file cookie.
+# CHANGELOG v16.16 (Berdasarkan Analisis Error):
+# - FIX 1 (Kritis): Menambahkan fallback import 'backports.zoneinfo' untuk
+#   kompatibilitas environment yang tidak memiliki 'zoneinfo' (misal: Python < 3.9).
+# - FIX 2 (Env): Menandai 'pycountry' sebagai dependensi eksternal.
+# - FIX 3 (Logika): Memperbaiki validasi parameter 'url' di 'get_ytdlp_options'
+#   menjadi 'if url and isinstance(url, str):' agar lebih aman.
+# - FIX 4 (Kritis): Memperbaiki potensi 'NoneType Error' di 'handle_media_download'
+#   dengan menambahkan pengecekan 'isinstance(file_path, str)'.
+# - FIX 5 (Error Handling): Memperluas penanganan error di 'handle_youtube_download_choice'
+#   untuk mencakup lebih banyak 'cookie_errors' dan error spesifik
+#   seperti 'video unavailable' dan 'georestricted' sesuai analisis.
 # ============================================
 
 import os
@@ -35,7 +32,11 @@ import signal
 import sys
 import string
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
+# FIX 1: Import Error - ZoneInfo
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from backports.zoneinfo import ZoneInfo
 from pathlib import Path
 
 # --- Import library baru ---
@@ -44,7 +45,8 @@ from PIL import Image
 import yt_dlp
 import phonenumbers
 from phonenumbers import carrier, geocoder, phonenumberutil
-import pycountry
+# FIX 2: pycountry perlu di-install terpisah
+import pycountry  # SOLUSI: Tambahkan ke requirements.txt atau 'pip install pycountry'
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
@@ -1011,9 +1013,18 @@ async def handle_youtube_download_choice(update: Update, context: ContextTypes.D
         )
         await track_message(context, next_action_msg)
 
+    # FIX 5: Error Handling yang Tidak Konsisten di YouTube Downloader
     except yt_dlp.utils.DownloadError as e:
         error_str = str(e).lower()
-        if 'sign in to confirm' in error_str or 'no suitable proxies' in error_str or '410 gone' in error_str:
+        
+        # FIX: Penanganan error yang lebih komprehensif berdasarkan analisis
+        cookie_errors = [
+            'sign in to confirm', 'no suitable proxies', '410 gone',
+            'unable to extract', 'login required', 'this video requires payment',
+            'private video', 'members only', 'age restricted'
+        ]
+
+        if any(err in error_str for err in cookie_errors):
             admin_alert = ("CRITICAL: YouTube cookie authentication failed during download. The `youtube_cookies.txt` file is likely expired or invalid. "
                            "Please ensure the YOUTUBE_COOKIES_BASE64 environment variable contains fresh cookies. "
                            "See https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies for tips on effectively exporting YouTube cookies.")
@@ -1021,9 +1032,13 @@ async def handle_youtube_download_choice(update: Update, context: ContextTypes.D
             reply_text = "Maaf, terjadi kendala teknis pada layanan unduh video. Tim kami telah diberitahu. (Authentikasi YouTube gagal)"
         elif 'max filesize' in error_str:
             reply_text = f"❌ <b>Gagal!</b> Ukuran file yang dipilih melebihi batas unduh bot ({MAX_UPLOAD_FILE_SIZE_MB} MB)."
+        elif 'video unavailable' in error_str:
+            reply_text = "❌ <b>Gagal!</b> Video tidak tersedia atau telah dihapus."
+        elif 'georestricted' in error_str:
+            reply_text = "❌ <b>Gagal!</b> Video ini dibatasi secara geografis (geo-restricted)."
         else:
             await send_admin_log(context, e, update, "handle_youtube_download_choice (DownloadError)")
-            reply_text = "Maaf, terjadi kesalahan saat mengunduh file (mungkin video dilindungi hak cipta atau dibatasi)."
+            reply_text = f"Maaf, terjadi kesalahan saat mengunduh file. (Error: {str(e)[:100]}...)"
         
         if status_msg:
             try:
@@ -1331,8 +1346,9 @@ async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TY
         
         for i, file_info in enumerate(files_to_process):
             file_path = file_info.get('filepath')
-            if not file_path or not os.path.exists(file_path):
-                logger.warning(f"File path not found for entry {i}, skipping. Info: {file_info}")
+            # FIX 4: Pastikan file_path adalah string yang valid dan file-nya ada
+            if not file_path or not isinstance(file_path, str) or not os.path.exists(file_path):
+                logger.warning(f"File path invalid atau tidak ditemukan: {file_path}, skipping entry {i}. Info: {file_info}")
                 continue
 
             downloaded_files.append(file_path) # Tambahkan ke daftar untuk dihapus nanti
@@ -1539,7 +1555,8 @@ def get_ytdlp_options(url: str = None):
     
     # --- START COOKIE LOGIC ---
     cookie_file_to_use = None
-    if url:
+    # FIX 3: Periksa apakah url tidak None dan string
+    if url and isinstance(url, str):
         if 'youtube.com' in url or 'youtu.be' in url:
             if Path(YOUTUBE_COOKIE_FILE).exists():
                 cookie_file_to_use = YOUTUBE_COOKIE_FILE
@@ -1596,7 +1613,7 @@ def main():
     bot_application.add_handler(CallbackQueryHandler(generate_password, pattern='^gen_password$'))
 
 
-    print(f"🤖 Bot Pulsa Net (v16.15 - Dual Cookie System) sedang berjalan...")
+    print(f"🤖 Bot Pulsa Net (v16.16 - Perbaikan Stabilitas) sedang berjalan...")
     
     # --- Laporan Status Cookie Baru ---
     if youtube_valid:
