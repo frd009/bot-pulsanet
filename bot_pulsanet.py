@@ -2,9 +2,13 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
 # Developer: frd009
-# Versi: 17.0 (Mode Link Downloader + Ikon Animasi)
+# Versi: 17.1 (Mode Link Downloader + Deteksi Gambar Andal)
 #
-# CHANGELOG v17.0 (Fitur Baru & Perbaikan):
+# CHANGELOG v17.1 (Fitur Baru & Perbaikan):
+# - UPDATE (Fitur Utama): Merombak total logika 'handle_media_download'. Bot sekarang
+#   secara eksplisit dan andal mendeteksi serta mengekstrak link unduhan untuk GAMBAR
+#   di samping video. Ini berfungsi untuk postingan tunggal maupun carousel (multi-media)
+#   dari platform seperti Instagram, Twitter/X, dll.
 # - CHANGE (Fitur Utama): Merubah logika downloader. Bot sekarang mengirim link unduhan
 #   langsung (direct URL) alih-alih mengunggah file. Ini menghilangkan batasan ukuran.
 # - UPDATE: Fungsi 'handle_youtube_download_choice' dan 'handle_media_download'
@@ -1328,7 +1332,7 @@ async def generate_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- FITUR BARU & PERBAIKAN: Media Downloader (Mode Link) ---
 async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str):
-    """Menangani unduhan media generik (IG, Twitter, TikTok, dll.) - Mode Link."""
+    """Menangani unduhan media generik (IG, Twitter, TikTok, dll.) - Mode Link dengan deteksi gambar/video yang andal."""
     status_msg = None
     try:
         status_msg = await update.message.reply_text("⏳ <b>Menganalisis link media...</b>", parse_mode=ParseMode.HTML)
@@ -1336,8 +1340,7 @@ async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TY
 
         # Opsi yt-dlp untuk ekstrak info saja
         ydl_opts = get_ytdlp_options(url=url)
-        # Hapus opsi 'outtmpl' karena tidak download file
-        ydl_opts.pop('outtmpl', None)
+        ydl_opts.pop('outtmpl', None) # Hapus opsi 'outtmpl' karena tidak download file
 
         info_dict = None
         try:
@@ -1350,7 +1353,6 @@ async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TY
             error_str = str(e).lower()
             reply_text = "❌ Maaf, terjadi kesalahan saat menganalisis link."
 
-            # Penanganan error cookie/login yang lebih spesifik
             if ('unsupported url' in error_str and 'login' in url) or \
                ('this content is only available for registered users' in error_str) or \
                ('private account' in error_str or 'login required' in error_str):
@@ -1367,61 +1369,60 @@ async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TY
             if status_msg: await status_msg.edit_text(reply_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
             return
 
-        # --- Logika Ekstraksi Link ---
-        media_links = [] # List untuk menyimpan {'label': '...', 'url': '...'}
+        # --- Logika Ekstraksi Link yang Diperbarui ---
+        media_links = []
+        # Buat daftar item untuk diproses: jika ada 'entries' (carousel), gunakan itu. Jika tidak, proses info_dict sebagai satu item.
+        items_to_process = info_dict.get('entries', [info_dict])
 
-        # Kasus 1: Carousel/Multi-media (misal: Instagram post)
-        if 'entries' in info_dict:
-            await status_msg.edit_text(f"⏳ <b>Postingan multi-media terdeteksi ({len(info_dict['entries'])} item).</b> Mengambil link...", parse_mode=ParseMode.HTML)
-            for i, entry in enumerate(info_dict.get('entries', [])):
-                if not entry: continue
+        if len(items_to_process) > 1 and all(items_to_process):
+            await status_msg.edit_text(f"⏳ <b>Postingan multi-media terdeteksi ({len(items_to_process)} item).</b> Mengambil link...", parse_mode=ParseMode.HTML)
 
-                # Prioritaskan URL langsung jika ada (umumnya untuk gambar)
-                media_url = entry.get('url')
-                media_type = "Gambar" # Asumsi default
-                file_size_str = "N/A"
+        for i, item in enumerate(items_to_process):
+            if not item: continue # Lewati entri yang kosong
 
-                # Jika tidak ada URL langsung, cari format terbaik (umumnya video)
-                if not media_url and entry.get('formats'):
-                    # Cari format video terbaik (resolusi tertinggi) atau audio terbaik
-                    best_format = max(entry['formats'], key=lambda f: (f.get('height', 0), f.get('width', 0), f.get('tbr', 0), f.get('filesize', 0) or f.get('filesize_approx', 0) or 0), default=None)
-                    if best_format:
-                        media_url = best_format.get('url')
-                        media_type = "Video" if best_format.get('vcodec') != 'none' else "Audio"
-                        file_size_str = format_bytes(best_format.get('filesize') or best_format.get('filesize_approx'))
-
-                if media_url:
-                    label = f"Unduh {media_type} {i+1}"
-                    if file_size_str != "N/A": label += f" ({file_size_str})"
-                    media_links.append({'label': label, 'url': media_url})
-
-        # Kasus 2: Media Tunggal
-        else:
-            media_url = info_dict.get('url') # URL utama (bisa gambar atau video resolusi rendah)
+            media_url = None
             media_type = "Media"
             file_size_str = "N/A"
 
-            # Jika ada daftar format, cari yang terbaik
-            if info_dict.get('formats'):
-                 best_format = max(info_dict['formats'], key=lambda f: (f.get('preference', -1), f.get('height', 0), f.get('width', 0), f.get('tbr', 0), f.get('filesize', 0) or f.get('filesize_approx', 0) or 0), default=None)
-                 if best_format and best_format.get('url'):
-                     media_url = best_format.get('url') # Gunakan URL format terbaik
-                     media_type = "Video" if best_format.get('vcodec') != 'none' else "Audio"
-                     file_size_str = format_bytes(best_format.get('filesize') or best_format.get('filesize_approx'))
-            # Cek thumbnail jika tidak ada format (mungkin hanya gambar)
-            elif info_dict.get('thumbnail') and not media_url:
-                 media_url = info_dict.get('thumbnail') # Gunakan thumbnail sebagai fallback gambar
-                 media_type = "Gambar"
+            # --- Logika Deteksi Tipe Media (Video vs Gambar) ---
+            # Prioritas 1: Cek format video. Jika ada, ini adalah video.
+            valid_formats = [f for f in item.get('formats', []) if f.get('url') and 'manifest' not in f.get('protocol', '')]
+            if valid_formats:
+                best_format = max(valid_formats, key=lambda f: (f.get('preference', -1), f.get('height', 0), f.get('width', 0), f.get('tbr', 0), (f.get('filesize') or f.get('filesize_approx') or 0)), default=None)
+                if best_format:
+                    media_url = best_format.get('url')
+                    media_type = "Video" if best_format.get('vcodec') != 'none' else "Audio"
+                    file_size_str = format_bytes(best_format.get('filesize') or best_format.get('filesize_approx'))
 
+            # Prioritas 2: Jika bukan video, cari URL gambar langsung.
+            if not media_url and item.get('url'):
+                # Cek ekstensi file jika tersedia untuk memastikan itu gambar
+                ext = item.get('ext')
+                if ext in ['jpg', 'jpeg', 'png', 'webp', 'gif']:
+                    media_url = item.get('url')
+                    media_type = "Gambar"
+                    file_size_str = format_bytes(item.get('filesize'))
+                # Jika tidak ada ekstensi, asumsikan URL langsung adalah media yang diinginkan (bisa gambar)
+                else:
+                    media_url = item.get('url')
+                    media_type = "Gambar" # Asumsi terbaik
+                    file_size_str = format_bytes(item.get('filesize'))
+
+            # Prioritas 3: Fallback ke thumbnail jika tidak ada URL lain yang ditemukan
+            if not media_url and item.get('thumbnail'):
+                media_url = item.get('thumbnail')
+                media_type = "Gambar (Thumbnail)"
+
+            # Jika link berhasil diekstrak, tambahkan ke daftar
             if media_url:
-                label = f"Unduh {media_type}"
+                item_number = f" {i+1}" if len(items_to_process) > 1 else ""
+                label = f"Unduh {media_type}{item_number}"
                 if file_size_str != "N/A": label += f" ({file_size_str})"
                 media_links.append({'label': label, 'url': media_url})
 
         # Jika tidak ada link yang ditemukan
         if not media_links:
             logger.warning(f"⚠️ Tidak ditemukan link media yang bisa diekstrak dari info_dict untuk {url}")
-            # FIX 4 (adjusted): Beri pesan error yang jelas
             await status_msg.edit_text("❌ Tidak dapat menemukan link unduhan media dari URL ini.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
             return
 
@@ -1672,7 +1673,7 @@ def main():
     # --- Akhir Registrasi Handler ---
 
     print(f"============================================")
-    print(f"🚀 Bot Pulsa Net (v17.0 - Mode Link Downloader)")
+    print(f"🚀 Bot Pulsa Net (v17.1 - Mode Link Downloader)")
     print(f"============================================")
 
     # --- Laporan Status Cookie ---
