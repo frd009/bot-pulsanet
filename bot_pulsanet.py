@@ -2,18 +2,20 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
 # Developer: frd099
-# Versi: 17.6 (Final - Integrated Product Catalog)
+# Versi: 17.7 (Perbaikan Kritis Loop Utama)
 #
-# DESKRIPSI:
-# Versi ini menggunakan basis kode v17.6 yang stabil dan canggih,
-# diintegrasikan dengan katalog produk lengkap dari v15.2.
-# Hasilnya adalah bot dengan fungsionalitas downloader profesional
-# dan daftar produk yang komprehensif untuk berbagai operator.
+# CHANGELOG v17.7:
+# - FIX (Kritis): Memperbaiki masalah bot tidak merespons perintah `/start`.
+#   Struktur loop utama di `main` function diubah kembali menggunakan `run_polling()`,
+#   yang merupakan metode standar dan stabil untuk bot berbasis polling.
+# - REFACTOR: Menghapus `signal_handler` dan `asyncio.Event` yang tidak diperlukan,
+#   karena `run_polling()` sudah menangani proses shutdown (Ctrl+C) secara otomatis.
+#   Ini membuat kode lebih bersih dan andal.
 # ============================================
 
 # --- SARAN DEPENDENSI ---
 # Untuk menjalankan bot ini, install semua library yang dibutuhkan:
-# pip install python-telegram-bot httpx qrcode Pillow yt-dlp phonenumbers pycountry backports.zoneinfo tzdata
+# pip install python-telegram-bot httpx qrcode Pillow yt-dlp phonenumbers pycountry "backports.zoneinfo; python_version < '3.9'" tzdata
 
 import os
 import re
@@ -86,18 +88,6 @@ DOWNLOADER_SEMAPHORE = asyncio.Semaphore(2)
 DOWNLOAD_ANALYSIS_TIMEOUT = 120.0
 MEDIA_DOWNLOAD_TIMEOUT = 180.0 # Timeout untuk mengunduh bytes media (3 menit)
 
-# --- Graceful Shutdown ---
-bot_application = None
-shutdown_event = asyncio.Event()
-
-def signal_handler(sig, frame):
-    print("\n\n🛑 Menerima signal shutdown...")
-    print("🔄 Menghentikan bot dengan aman...")
-    if bot_application:
-        shutdown_event.set()
-    else:
-        sys.exit(0)
-
 # ==============================================================================
 # 📦 DATA PRODUK (Diambil dari v15.2 - LENGKAP)
 # ==============================================================================
@@ -117,67 +107,44 @@ ALL_PACKAGES_RAW = [
     {'id': 219, 'name': "XL Flex S 5GB 28Hari", 'price': 27000, 'category': 'XL', 'type': 'Paket', 'data': '5 GB', 'validity': '28 Hari', 'details': '5GB Nasional, Hingga 3GB Lokal, Nelpon 5 Menit'},
     {'id': 221, 'name': "XL Flex M 10GB 28Hari", 'price': 45000, 'category': 'XL', 'type': 'Paket', 'data': '10 GB', 'validity': '28 Hari', 'details': '10GB Nasional, Hingga 5GB Lokal, Nelpon 5 Menit'},
     {'id': 224, 'name': "XL Flex L Plus 26GB 28Hari", 'price': 75000, 'category': 'XL', 'type': 'Paket', 'data': '26 GB', 'validity': '28 Hari', 'details': '26GB Nasional, Hingga 11GB Lokal, Nelpon 5 Menit'},
-    
-    # Paket Tri
     {'id': 18, 'name': "Tri Happy 5gb 7hari", 'price': 20000, 'category': 'Tri', 'type': 'Paket', 'data': '5 GB', 'validity': '7 Hari', 'details': 'Kuota 5gb, Berlaku Nasional, 1.5gb Lokal'},
     {'id': 26, 'name': "Tri Happy 11gb 28hari", 'price': 46000, 'category': 'Tri', 'type': 'Paket', 'data': '11 GB', 'validity': '28 Hari', 'details': 'Kuota 11gb, Berlaku Nasional, 6gb Lokal'},
     {'id': 30, 'name': "Tri Happy 42gb 28hari", 'price': 71000, 'category': 'Tri', 'type': 'Paket', 'data': '42 GB', 'validity': '28 Hari', 'details': 'Kuota 42gb, Berlaku Nasional, 8gb Lokal'},
-    
-    # Paket Axis
     {'id': 71, 'name': "Axis Bronet 2gb 30hari", 'price': 19000, 'category': 'Axis', 'type': 'Paket', 'data': '2 GB', 'validity': '30 Hari', 'details': 'Kuota 2gb, Berlaku Nasional'},
     {'id': 74, 'name': "Axis Bronet 8gb 30hari", 'price': 39000, 'category': 'Axis', 'type': 'Paket', 'data': '8 GB', 'validity': '30 Hari', 'details': 'Kuota 8gb, Berlaku Nasional'},
     {'id': 76, 'name': "Axis Bronet 20gb 30hari", 'price': 73000, 'category': 'Axis', 'type': 'Paket', 'data': '20 GB', 'validity': '30 Hari', 'details': 'Kuota 20gb, Berlaku Nasional'},
-    
-    # Paket Indosat
     {'id': 181, 'name': "Freedom Internet 6GB 28Hari", 'price': 26000, 'category': 'Indosat', 'type': 'Paket', 'data': '6 GB', 'validity': '28 Hari', 'details': 'Kuota 6GB, Nasional'},
     {'id': 186, 'name': "Freedom Internet 13GB 28Hari", 'price': 52000, 'category': 'Indosat', 'type': 'Paket', 'data': '13 GB', 'validity': '28 Hari', 'details': 'Kuota 13GB, Nasional'},
     {'id': 188, 'name': "Freedom Internet 30GB 28Hari", 'price': 90000, 'category': 'Indosat', 'type': 'Paket', 'data': '30 GB', 'validity': '28 Hari', 'details': 'Kuota 30GB, Nasional'},
-    
-    # Paket Telkomsel
     {'id': 266, 'name': "Tsel Promo 3gb 30 Hari", 'price': 26000, 'category': 'Telkomsel', 'type': 'Paket', 'data': '3 GB', 'validity': '30 Hari', 'details': '3gb + Bonus Extra Kuota'},
     {'id': 269, 'name': "Tsel Promo 6.5gb 30 Hari", 'price': 57000, 'category': 'Telkomsel', 'type': 'Paket', 'data': '6.5 GB', 'validity': '30 Hari', 'details': '6.5gb + Bonus Extra Kuota'},
     {'id': 271, 'name': "Tsel 8gb 30 Hari", 'price': 68000, 'category': 'Telkomsel', 'type': 'Paket', 'data': '8 GB', 'validity': '30 Hari', 'details': '8gb + Bonus Extra Kuota'},
-    
-    # Paket By.U
     {'id': 129, 'name': "By.U Promo 9GB 30Hari", 'price': 27000, 'category': 'By.U', 'type': 'Paket', 'data': '9 GB', 'validity': '30 Hari', 'details': 'Kuota 9GB, Nasional'},
     {'id': 132, 'name': "By.U Promo 20GB 30Hari", 'price': 47000, 'category': 'By.U', 'type': 'Paket', 'data': '20 GB', 'validity': '30 Hari', 'details': 'Kuota 20GB, Nasional'},
-    
-    # Pulsa XL
     {'id': 247, 'name': "XL Pulsa 10.000", 'price': 11000, 'category': 'XL', 'type': 'Pulsa', 'data': 'Rp 10.000', 'validity': '+15 Hari', 'details': 'Pulsa Reguler 10.000'},
     {'id': 249, 'name': "XL Pulsa 25.000", 'price': 25000, 'category': 'XL', 'type': 'Pulsa', 'data': 'Rp 25.000', 'validity': '+30 Hari', 'details': 'Pulsa Reguler 25.000'},
     {'id': 252, 'name': "XL Pulsa 50.000", 'price': 50000, 'category': 'XL', 'type': 'Pulsa', 'data': 'Rp 50.000', 'validity': '+45 Hari', 'details': 'Pulsa Reguler 50.000'},
     {'id': 257, 'name': "XL Pulsa 100.000", 'price': 100000, 'category': 'XL', 'type': 'Pulsa', 'data': 'Rp 100.000', 'validity': '+60 Hari', 'details': 'Pulsa Reguler 100.000'},
-    
-    # Pulsa Tri
     {'id': 50, 'name': "Tri Pulsa 10.000", 'price': 11000, 'category': 'Tri', 'type': 'Pulsa', 'data': 'Rp 10.000', 'validity': '+10 Hari', 'details': 'Pulsa Reguler 10.000'},
     {'id': 53, 'name': "Tri Pulsa 25.000", 'price': 25000, 'category': 'Tri', 'type': 'Pulsa', 'data': 'Rp 25.000', 'validity': '+25 Hari', 'details': 'Pulsa Reguler 25.000'},
     {'id': 56, 'name': "Tri Pulsa 50.000", 'price': 50000, 'category': 'Tri', 'type': 'Pulsa', 'data': 'Rp 50.000', 'validity': '+50 Hari', 'details': 'Pulsa Reguler 50.000'},
     {'id': 62, 'name': "Tri Pulsa 100.000", 'price': 99000, 'category': 'Tri', 'type': 'Pulsa', 'data': 'Rp 100.000', 'validity': '+100 Hari', 'details': 'Pulsa Reguler 100.000'},
-    
-    # Pulsa Axis
     {'id': 105, 'name': "Axis Pulsa 10.000", 'price': 11000, 'category': 'Axis', 'type': 'Pulsa', 'data': 'Rp 10.000', 'validity': '+15 Hari', 'details': 'Pulsa Reguler 10.000'},
     {'id': 107, 'name': "Axis Pulsa 25.000", 'price': 25000, 'category': 'Axis', 'type': 'Pulsa', 'data': 'Rp 25.000', 'validity': '+30 Hari', 'details': 'Pulsa Reguler 25.000'},
     {'id': 110, 'name': "Axis Pulsa 50.000", 'price': 50000, 'category': 'Axis', 'type': 'Pulsa', 'data': 'Rp 50.000', 'validity': '+45 Hari', 'details': 'Pulsa Reguler 50.000'},
     {'id': 115, 'name': "Axis Pulsa 100.000", 'price': 100000, 'category': 'Axis', 'type': 'Pulsa', 'data': 'Rp 100.000', 'validity': '+60 Hari', 'details': 'Pulsa Reguler 100.000'},
-    
-    # Pulsa Indosat
     {'id': 195, 'name': "Indosat Pulsa 10.000", 'price': 12000, 'category': 'Indosat', 'type': 'Pulsa', 'data': 'Rp 10.000', 'validity': '+15 Hari', 'details': 'Pulsa Reguler 10.000'},
     {'id': 199, 'name': "Indosat Pulsa 25.000", 'price': 26000, 'category': 'Indosat', 'type': 'Pulsa', 'data': 'Rp 25.000', 'validity': '+30 Hari', 'details': 'Pulsa Reguler 25.000'},
     {'id': 202, 'name': "Indosat Pulsa 50.000", 'price': 50000, 'category': 'Indosat', 'type': 'Pulsa', 'data': 'Rp 50.000', 'validity': '+45 Hari', 'details': 'Pulsa Reguler 50.000'},
     {'id': 207, 'name': "Indosat Pulsa 100.000", 'price': 100000, 'category': 'Indosat', 'type': 'Pulsa', 'data': 'Rp 100.000', 'validity': '+60 Hari', 'details': 'Pulsa Reguler 100.000'},
-    
-    # Pulsa Telkomsel
     {'id': 280, 'name': "Telkomsel Pulsa 10.000", 'price': 11000, 'category': 'Telkomsel', 'type': 'Pulsa', 'data': 'Rp 10.000', 'validity': 'N/A', 'details': 'Pulsa Reguler 10.000'},
     {'id': 283, 'name': "Telkomsel Pulsa 25.000", 'price': 25000, 'category': 'Telkomsel', 'type': 'Pulsa', 'data': 'Rp 25.000', 'validity': 'N/A', 'details': 'Pulsa Reguler 25.000'},
     {'id': 288, 'name': "Telkomsel Pulsa 50.000", 'price': 50000, 'category': 'Telkomsel', 'type': 'Pulsa', 'data': 'Rp 50.000', 'validity': 'N/A', 'details': 'Pulsa Reguler 50.000'},
     {'id': 298, 'name': "Telkomsel Pulsa 100.000", 'price': 99000, 'category': 'Telkomsel', 'type': 'Pulsa', 'data': 'Rp 100.000', 'validity': 'N/A', 'details': 'Pulsa Reguler 100.000'},
-    
-    # Pulsa By.U
     {'id': 142, 'name': "By.U Pulsa 10.000", 'price': 11000, 'category': 'By.U', 'type': 'Pulsa', 'data': 'Rp 10.000', 'validity': 'N/A', 'details': 'Pulsa By.U 10.000'},
     {'id': 145, 'name': "By.U Pulsa 25.000", 'price': 25000, 'category': 'By.U', 'type': 'Pulsa', 'data': 'Rp 25.000', 'validity': 'N/A', 'details': 'Pulsa By.U 25.000'},
     {'id': 148, 'name': "By.U Pulsa 50.000", 'price': 50000, 'category': 'By.U', 'type': 'Pulsa', 'data': 'Rp 50.000', 'validity': 'N/A', 'details': 'Pulsa By.U 50.000'},
 ]
-
 
 # ==============================================================================
 # 🛠️ FUNGSI-FUNGSI DATA & UTILITAS
@@ -1059,37 +1026,40 @@ def get_ytdlp_options(url: str = None):
     if cookie_file_to_use: opts['cookiefile'] = cookie_file_to_use
     return opts
 
-async def main_async():
-    global bot_application
+def main() -> None:
+    """Mulai bot dan jalankan hingga dihentikan."""
     TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-    if not TOKEN: logger.critical("❌ FATAL: Token bot tidak ditemukan!"); sys.exit(1)
-    if not ADMIN_ID: logger.warning("⚠️ TELEGRAM_ADMIN_ID tidak diatur.")
-    
+    if not TOKEN:
+        logger.critical("❌ FATAL: Token bot tidak ditemukan! Atur TELEGRAM_BOT_TOKEN di environment variable.")
+        sys.exit(1)
+    if not ADMIN_ID:
+        logger.warning("⚠️ TELEGRAM_ADMIN_ID tidak diatur. Log eror tidak akan dikirim ke admin.")
+
     youtube_valid, generic_valid = setup_all_cookies()
-    
+
     from telegram.request import HTTPXRequest
     timeout_config = HTTPXRequest(connect_timeout=15.0, read_timeout=30.0, write_timeout=30.0)
-    bot_application = Application.builder().token(TOKEN).request(timeout_config).build()
+    application = Application.builder().token(TOKEN).request(timeout_config).build()
 
     # Registrasi Handler
-    bot_application.add_handler(CommandHandler("start", start))
-    bot_application.add_handler(CallbackQueryHandler(start, pattern='^back_to_start$'))
-    bot_application.add_handler(CallbackQueryHandler(clear_history, pattern='^clear_history$'))
-    bot_application.add_handler(CallbackQueryHandler(show_bantuan, pattern='^main_bantuan$'))
-    bot_application.add_handler(CallbackQueryHandler(show_operator_menu, pattern=r'^main_(paket|pulsa)$'))
-    bot_application.add_handler(CallbackQueryHandler(show_tools_menu, pattern='^main_tools$'))
-    bot_application.add_handler(CallbackQueryHandler(show_xl_paket_submenu, pattern=r'^list_paket_xl$'))
-    bot_application.add_handler(CallbackQueryHandler(show_product_list, pattern=r'^list_(paket|pulsa)_.+$'))
-    bot_application.add_handler(CallbackQueryHandler(show_package_details, pattern=r'^pkg_\d+_[a-z0-9_]+$'))
-    bot_application.add_handler(CallbackQueryHandler(prompt_for_action, pattern=r'^ask_for_(number|qr|youtube|currency|media_link)$'))
-    bot_application.add_handler(CallbackQueryHandler(show_game_menu, pattern='^main_game$'))
-    bot_application.add_handler(CallbackQueryHandler(play_game, pattern=r'^game_play_(rock|scissors|paper)$'))
-    bot_application.add_handler(CallbackQueryHandler(handle_youtube_download_choice, pattern=r'^yt_dl_link\|.+'))
-    bot_application.add_handler(CallbackQueryHandler(generate_password, pattern='^gen_password$'))
-    bot_application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CallbackQueryHandler(start, pattern='^back_to_start$'))
+    application.add_handler(CallbackQueryHandler(clear_history, pattern='^clear_history$'))
+    application.add_handler(CallbackQueryHandler(show_bantuan, pattern='^main_bantuan$'))
+    application.add_handler(CallbackQueryHandler(show_operator_menu, pattern=r'^main_(paket|pulsa)$'))
+    application.add_handler(CallbackQueryHandler(show_tools_menu, pattern='^main_tools$'))
+    application.add_handler(CallbackQueryHandler(show_xl_paket_submenu, pattern=r'^list_paket_xl$'))
+    application.add_handler(CallbackQueryHandler(show_product_list, pattern=r'^list_(paket|pulsa)_.+$'))
+    application.add_handler(CallbackQueryHandler(show_package_details, pattern=r'^pkg_\d+_[a-z0-9_]+$'))
+    application.add_handler(CallbackQueryHandler(prompt_for_action, pattern=r'^ask_for_(number|qr|youtube|currency|media_link)$'))
+    application.add_handler(CallbackQueryHandler(show_game_menu, pattern='^main_game$'))
+    application.add_handler(CallbackQueryHandler(play_game, pattern=r'^game_play_(rock|scissors|paper)$'))
+    application.add_handler(CallbackQueryHandler(handle_youtube_download_choice, pattern=r'^yt_dl_link\|.+'))
+    application.add_handler(CallbackQueryHandler(generate_password, pattern='^gen_password$'))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
     print("============================================")
-    print("🚀 Bot Pulsa Net (v17.6 Final - Integrated)")
+    print("🚀 Bot Pulsa Net (v17.7 - Loop Utama Diperbaiki)")
     print("============================================")
     if youtube_valid: print("✅ YouTube Downloader: AKTIF (Cookies Valid)")
     else: print("❌ YouTube Downloader: MODE TERBATAS (Masalah Cookies YouTube)")
@@ -1097,24 +1067,19 @@ async def main_async():
     else: print("⚠️ Generic Media Downloader: MODE TERBATAS (Masalah Cookies Generik)")
     if not youtube_valid or not generic_valid:
         logger.warning("--- PERINGATAN: Fitur unduh mungkin tidak berfungsi optimal tanpa cookies! ---")
+    
     print("\n💡 Bot sedang berjalan. Tekan Ctrl+C untuk berhenti.")
     print("-" * 60)
-    
-    async with bot_application:
-        await bot_application.start()
-        await shutdown_event.wait()
-        await bot_application.stop()
-        print("\n✅ Bot berhasil dihentikan dengan aman.")
+
+    # Jalankan bot. Ini adalah blocking call.
+    application.run_polling()
+
 
 if __name__ == "__main__":
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-    print("🔧 Handler shutdown (Ctrl+C / SIGTERM) terdaftar.")
-    
     try:
-        asyncio.run(main_async())
+        main()
     except (KeyboardInterrupt, SystemExit):
-        logger.info("Proses dihentikan oleh pengguna.")
+        print("\n🛑 Proses dihentikan oleh pengguna.")
     except Exception as e:
         logger.critical(f"❌ FATAL ERROR di main loop: {e}", exc_info=True)
         sys.exit(1)
