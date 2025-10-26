@@ -1091,7 +1091,7 @@ async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TY
             return
 
         except Exception as e_send:
-            logger.warning(f"⚠️ Gagal mengirim media group/langsung: {e}. Fallback ke link.")
+            logger.warning(f"⚠️ Gagal mengirim media group/langsung: {e_send}. Fallback ke link.")
             await send_admin_log(context, e_send, update, "handle_media_download (SendMedia Fail)", custom_message="Gagal kirim media, fallback ke link.")
             # JANGAN 'return' di sini, lanjut ke blok 'finally' untuk fallback
             if "group send failed" in str(e_send) or "wrong file identifier" in str(e_send) or "failed to get file" in str(e_send) or "too large" in str(e_send):
