@@ -2,7 +2,15 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
 # Developer: frd099
-# Versi: 17.4 (Logika Downloader Cerdas & Perbaikan Timeout)
+# Versi: 17.5 (Pengiriman Media Group Profesional)
+#
+# CHANGELOG v17.5 (Peningkatan UX Downloader):
+# - PRO (Fitur): Merombak total `handle_media_download` untuk pengalaman profesional.
+#   Bot sekarang mencoba mengunduh dan mengirim foto/video (termasuk carousel)
+#   langsung sebagai 'Media Group' (untuk multi-item) atau post tunggal.
+# - PRO (UX): Jika pengiriman langsung gagal (misal: file terlalu besar > 50MB atau > 10 item),
+#   bot akan secara cerdas beralih kembali (fallback) mengirim link unduhan.
+# - PRO (UX): Menambahkan caption (judul/deskripsi post) ke media yang dikirim.
 #
 # CHANGELOG v17.4 (Fitur Baru & Perbaikan):
 # - FIX (Kritis): Merombak total logika `handle_media_download` dengan sistem prioritas.
@@ -56,7 +64,8 @@ except ImportError:
     print("❌ CRITICAL: 'pycountry' not found. Please install: pip install pycountry")
     sys.exit(1)
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+# --- PERUBAHAN v17.5: Tambahkan InputMediaPhoto dan InputMediaVideo ---
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, InputMediaVideo
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.constants import ChatAction, ParseMode
 from telegram.error import TelegramError, RetryAfter, BadRequest, TimedOut
@@ -131,7 +140,7 @@ ALL_PACKAGES_RAW = [
     {'id': 76, 'name': "Axis Bronet 20gb 30hari", 'price': 73000, 'category': 'Axis', 'type': 'Paket', 'data': '20 GB', 'validity': '30 Hari', 'details': 'Kuota 20gb, Berlaku Nasional'},
     {'id': 181, 'name': "Freedom Internet 6GB 28Hari", 'price': 26000, 'category': 'Indosat', 'type': 'Paket', 'data': '6 GB', 'validity': '28 Hari', 'details': 'Kuota 6GB, Nasional'},
     {'id': 186, 'name': "Freedom Internet 13GB 28Hari", 'price': 52000, 'category': 'Indosat', 'type': 'Paket', 'data': '13 GB', 'validity': '28 Hari', 'details': 'Kuota 13GB, Nasional'},
-    {'id': 188, 'name': "Freedom Internet 30GB 28Hari", 'price': 90000, 'category': 'Indosat', 'type': 'Paket', 'data': '30 GB', 'validity': '28 Hari', 'details': 'Kuota 30GB, Nasional'},
+s    {'id': 188, 'name': "Freedom Internet 30GB 28Hari", 'price': 90000, 'category': 'Indosat', 'type': 'Paket', 'data': '30 GB', 'validity': '28 Hari', 'details': 'Kuota 30GB, Nasional'},
     {'id': 266, 'name': "Tsel Promo 3gb 30 Hari", 'price': 26000, 'category': 'Telkomsel', 'type': 'Paket', 'data': '3 GB', 'validity': '30 Hari', 'details': '3gb + Bonus Extra Kuota'},
     {'id': 269, 'name': "Tsel Promo 6.5gb 30 Hari", 'price': 57000, 'category': 'Telkomsel', 'type': 'Paket', 'data': '6.5 GB', 'validity': '30 Hari', 'details': '6.5gb + Bonus Extra Kuota'},
     {'id': 271, 'name': "Tsel 8gb 30 Hari", 'price': 68000, 'category': 'Telkomsel', 'type': 'Paket', 'data': '8 GB', 'validity': '30 Hari', 'details': '8gb + Bonus Extra Kuota'},
@@ -241,7 +250,7 @@ def create_akrab_description(package_key):
                     "  - Pastikan SIM terpasang di perangkat (HP/Modem) untuk deteksi lokasi BTS dan klaim bonus kuota lokal.\n"
                     "  - Jika kuota MyRewards belum masuk sepenuhnya, mohon tunggu 1x24 jam sebelum melapor ke Admin.\n\n"
                     "ℹ️ <b>Informasi Tambahan:</b>\n" "  - <a href='http://bit.ly/area_akrab'>Cek Pembagian Area Kuota Anda</a>\n"
-                    "  - <a href='https://kmsp-store.com/cara-unreg-paket-akrab-yang-benar'>Panduan Unreg Paket Akrab</a>")
+                    "  - <a href='https.kmsp-store.com/cara-unreg-paket-akrab-yang-benar'>Panduan Unreg Paket Akrab</a>")
     return description
 def create_circle_description(package_key):
     info = ALL_PACKAGES_DATA.get(package_key, {})
@@ -610,7 +619,7 @@ async def handle_currency_conversion(update: Update, context: ContextTypes.DEFAU
         except ValueError:
              await status_msg.edit_text("❌ Jumlah tidak valid. Harap masukkan angka.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
              return
-        api_url = f"https://open.er-api.com/v6/latest/{base_curr}"
+        api_url = f"https.open.er-api.com/v6/latest/{base_curr}"
         async with httpx.AsyncClient() as client:
             response = await client.get(api_url, timeout=10)
             response.raise_for_status()
@@ -630,7 +639,7 @@ async def handle_currency_conversion(update: Update, context: ContextTypes.DEFAU
                 f"<b>Dari:</b> {amount:,.2f} {base_curr} ({base_name})\n"
                 f"<b>Ke:</b> {converted_amount:,.2f} {target_curr} ({target_name})\n\n"
                 f"<i>Kurs 1 {base_curr} ≈ {rate:,.4f} {target_curr}</i>\n"
-                f"<a href='https://www.google.com/finance/quote/{base_curr}-{target_curr}'>Sumber data (mungkin sedikit berbeda)</a>"
+                f"<a href='https.www.google.com/finance/quote/{base_curr}-{target_curr}'>Sumber data (mungkin sedikit berbeda)</a>"
             )
             await status_msg.edit_text(result_text, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
         else:
@@ -741,7 +750,7 @@ async def handle_youtube_download_choice(update: Update, context: ContextTypes.D
             if "Message is not modified" in str(e): status_msg = query.message
             else: raise e
         _, video_id, format_id = query.data.split('|')
-        original_url = f"https://www.youtube.com/watch?v={video_id}"
+        original_url = f"https.www.youtube.com/watch?v={video_id}"
         ydl_opts = get_ytdlp_options(url=original_url)
         info_dict = await asyncio.to_thread(run_yt_dlp_sync, ydl_opts, original_url, download=False)
         selected_format = next((f for f in info_dict.get('formats', []) if f.get('format_id') == format_id), None)
@@ -935,14 +944,21 @@ async def generate_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_admin_log(context, e, update, "generate_password")
         await query.edit_message_text("❌ Maaf, terjadi kesalahan saat membuat password.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
 
+# --- PERUBAHAN v17.5: Logika `handle_media_download` dirombak total ---
 async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str):
     status_msg = None
+    media_links_info = [] # Untuk fallback
+    
     try:
+        chat_id = update.effective_chat.id
         status_msg = await update.message.reply_text("⏳ <b>Menyiapkan antrian...</b>", parse_mode=ParseMode.HTML)
         await track_message(context, status_msg)
+        
         ydl_opts = get_ytdlp_options(url=url)
         ydl_opts.pop('outtmpl', None)
         info_dict = None
+
+        # --- 1. Ekstraksi Informasi ---
         try:
             async with DOWNLOADER_SEMAPHORE:
                 await status_msg.edit_text(
@@ -979,18 +995,25 @@ async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TY
             logger.warning(f"⚠️ yt-dlp error for URL {url}: {e}")
             if status_msg: await status_msg.edit_text(reply_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
             return
-        
-        # --- PERBAIKAN: LOGIKA EKSTRAKSI CERDAS ---
-        media_links = []
+
+        # --- 2. Proses Ekstraksi Link (Logika Prioritas v17.4) ---
         items_to_process = info_dict.get('entries', [info_dict])
         if len(items_to_process) > 1 and all(items_to_process):
-            await status_msg.edit_text(f"⏳ <b>Postingan multi-media terdeteksi ({len(items_to_process)} item).</b> Mengambil link...", parse_mode=ParseMode.HTML)
+            await status_msg.edit_text(f"⏳ <b>Postingan multi-media terdeteksi ({len(items_to_process)} item).</b> Memproses...", parse_mode=ParseMode.HTML)
 
-        for i, item in enumerate(items_to_process):
+        media_to_send = []
+        title_full = info_dict.get('title') or info_dict.get('description')
+        uploader = info_dict.get('uploader', 'Tidak diketahui')
+        
+        # Buat caption utama
+        main_caption = f"<b>{safe_html(title_full)}</b>\n<i>Oleh: {safe_html(uploader)}</i>" if title_full else f"<i>Oleh: {safe_html(uploader)}</i>"
+        if len(main_caption) > 1024: main_caption = main_caption[:1020] + "..." # Batas caption Telegram
+
+        for i, item in enumerate(items_to_process[:10]): # Batas Telegram adalah 10 item per media group
             if not item: continue
             media_url, media_type, file_size_str = None, "Media", "N/A"
 
-            # Prioritas 1: Cari URL gambar langsung dengan ekstensi yang jelas
+            # Prioritas 1: Cari URL gambar langsung
             ext = item.get('ext')
             if item.get('url') and ext in ['jpg', 'jpeg', 'png', 'webp', 'gif']:
                 media_url = item.get('url')
@@ -1012,37 +1035,116 @@ async def handle_media_download(update: Update, context: ContextTypes.DEFAULT_TY
             
             # Prioritas 3: Fallback ke URL generik atau thumbnail
             if not media_url:
-                if item.get('url') and not item.get('formats'): # Jika ada URL tapi bukan video
+                if item.get('url') and not item.get('formats'):
                     media_url, media_type = item.get('url'), "Gambar"
-                elif item.get('thumbnail'): # Upaya terakhir
+                elif item.get('thumbnail'):
                     media_url, media_type = item.get('thumbnail'), "Gambar (Thumbnail)"
 
             if media_url:
+                # Tambahkan ke daftar fallback (untuk link)
                 item_number = f" {i+1}" if len(items_to_process) > 1 else ""
                 label = f"Unduh {media_type}{item_number}"
                 if file_size_str != "N/A": label += f" ({file_size_str})"
-                media_links.append({'label': label, 'url': media_url})
+                media_links_info.append({'label': label, 'url': media_url})
+                
+                # Tambahkan ke daftar pengiriman langsung
+                caption = main_caption if i == 0 else None # Hanya item pertama yang punya caption
+                if media_type == "Gambar" or media_type == "Gambar (Thumbnail)":
+                    media_to_send.append(InputMediaPhoto(media=media_url, caption=caption, parse_mode=ParseMode.HTML))
+                elif media_type == "Video":
+                    media_to_send.append(InputMediaVideo(media=media_url, caption=caption, parse_mode=ParseMode.HTML))
+                # (Kita abaikan Audio untuk media group, fokus di Foto/Video)
 
-        if not media_links:
-            logger.warning(f"⚠️ Tidak ditemukan link media yang bisa diekstrak dari info_dict untuk {url}")
+        if not media_to_send and not media_links_info:
+            logger.warning(f"⚠️ Tidak ditemukan media yang bisa diekstrak dari info_dict untuk {url}")
             await status_msg.edit_text("❌ Tidak dapat menemukan link unduhan media dari URL ini.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
             return
 
-        keyboard = [[InlineKeyboardButton(f"🔗 {link_info['label']}", url=link_info['url'])] for link_info in media_links[:10]]
-        keyboard.append([InlineKeyboardButton("🔗 Unduh Media Lain", callback_data="ask_for_media_link")])
-        keyboard.append([InlineKeyboardButton("⬅️ Kembali ke Tools", callback_data="main_tools")])
-        title = info_dict.get('title', 'Media')
-        uploader = info_dict.get('uploader', 'Tidak diketahui')
-        result_text = (f"✅ <b>Link Unduhan Siap ({len(media_links)} item)!</b>\n\n"
-                       f"<b>Judul/Deskripsi:</b> {safe_html(title)}\n"
-                       f"<b>Oleh:</b> {safe_html(uploader)}\n\n"
-                       f"Klik tombol di bawah untuk mengunduh.\n\n"
-                       f"⚠️ <i><b>Penting:</b> Link unduhan bersifat <b>sementara</b> dan bisa kedaluwarsa.</i>")
-        await status_msg.edit_text(result_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        # --- 3. Coba Kirim Media Secara Langsung (Profesional) ---
+        try:
+            if not media_to_send:
+                # Jika hanya ada audio atau format aneh, langsung fallback
+                raise ValueError("Tidak ada media foto/video yang bisa dikirim langsung, fallback ke link.")
+
+            await status_msg.edit_text(f"✅ Ekstraksi berhasil ({len(media_to_send)} item). Mengirim media...")
+
+            if len(media_to_send) > 1:
+                # Kirim sebagai Media Group (Carousel)
+                await context.bot.send_media_group(chat_id=chat_id, media=media_to_send, read_timeout=60, write_timeout=60, connect_timeout=30)
+            elif len(media_to_send) == 1:
+                # Kirim sebagai Foto/Video tunggal
+                item = media_to_send[0]
+                if isinstance(item, InputMediaPhoto):
+                    await context.bot.send_photo(chat_id=chat_id, photo=item.media, caption=item.caption, parse_mode=item.parse_mode)
+                else:
+                    await context.bot.send_video(chat_id=chat_id, video=item.media, caption=item.caption, parse_mode=item.parse_mode)
+            
+            await status_msg.delete() # Sukses, hapus pesan status
+            
+            # Kirim menu next-action
+            keyboard_next = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔗 Unduh Media Lain", callback_data="ask_for_media_link")],
+                [InlineKeyboardButton("⬅️ Kembali ke Tools", callback_data="main_tools")]
+            ])
+            sent_msg_next = await context.bot.send_message(chat_id=chat_id, text="Apa yang ingin Anda lakukan selanjutnya?", reply_markup=keyboard_next)
+            await track_message(context, sent_msg_next)
+            return
+
+        except Exception as e_send:
+            logger.warning(f"⚠️ Gagal mengirim media group/langsung: {e}. Fallback ke link.")
+            await send_admin_log(context, e_send, update, "handle_media_download (SendMedia Fail)", custom_message="Gagal kirim media, fallback ke link.")
+            # JANGAN 'return' di sini, lanjut ke blok 'finally' untuk fallback
+            if "group send failed" in str(e_send) or "wrong file identifier" in str(e_send) or "failed to get file" in str(e_send) or "too large" in str(e_send):
+                await status_msg.edit_text(
+                    "⚠️ <b>Gagal mengirim media</b> (mungkin terlalu besar atau format tidak didukung).\n\n"
+                    "✅ Beralih ke mode <b>link unduhan</b>...",
+                    parse_mode=ParseMode.HTML
+                )
+            else:
+                 await status_msg.edit_text("⚠️ Terjadi kesalahan. Beralih ke mode link unduhan...", parse_mode=ParseMode.HTML)
+            
+            # Paksa eksekusi blok 'finally' untuk fallback
+            raise ValueError("Fallback ke Link")
+
     except Exception as e:
-        await send_admin_log(context, e, update, "handle_media_download (General)")
-        if status_msg:
-            await status_msg.edit_text("❌ Maaf, terjadi kesalahan teknis yang tidak terduga. Admin telah diberitahu.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+        # --- 4. FALLBACK: Kirim Link (Jika 'try' gagal) ---
+        # Ini akan menangkap error dari Ekstraksi (blok 1) ATAU error 'Fallback ke Link' (blok 3)
+        
+        if "Fallback ke Link" not in str(e) and "Gagal mendapatkan informasi" not in str(e):
+             # Jika ini error yang tidak terduga SEBELUM fallback
+            await send_admin_log(context, e, update, "handle_media_download (General)")
+        
+        if media_links_info:
+            # Jika kita punya link, kirim linknya
+            try:
+                keyboard = [[InlineKeyboardButton(f"🔗 {link_info['label']}", url=link_info['url'])] for link_info in media_links_info[:10]]
+                keyboard.append([InlineKeyboardButton("🔗 Unduh Media Lain", callback_data="ask_for_media_link")])
+                keyboard.append([InlineKeyboardButton("⬅️ Kembali ke Tools", callback_data="main_tools")])
+                
+                title = info_dict.get('title', 'Media')
+                uploader = info_dict.get('uploader', 'Tidak diketahui')
+                
+                result_text = (f"✅ <b>Link Unduhan Siap ({len(media_links_info)} item)!</b>\n\n"
+                               f"<b>Judul/Deskripsi:</b> {safe_html(title)}\n"
+                               f"<b>Oleh:</b> {safe_html(uploader)}\n\n"
+                               f"Klik tombol di bawah untuk mengunduh.\n\n"
+                               f"⚠️ <i><b>Penting:</b> Link unduhan bersifat <b>sementara</b> dan bisa kedaluwarsa.</i>")
+                
+                if status_msg:
+                    await status_msg.edit_text(result_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+                else:
+                    sent_fallback = await update.message.reply_text(result_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+                    await track_message(context, sent_fallback)
+            except Exception as e_fallback:
+                # Jika fallback pun gagal
+                 await send_admin_log(context, e_fallback, update, "handle_media_download (Fallback Fail)")
+                 if status_msg: await status_msg.edit_text("❌ Maaf, terjadi kesalahan ganda. Gagal mengirim media dan link.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+        
+        elif "Gagal mendapatkan informasi" not in str(e):
+            # Jika kita tidak punya link DAN ini bukan error 'info_dict'
+            if status_msg:
+                await status_msg.edit_text("❌ Maaf, terjadi kesalahan teknis yang tidak terduga. Admin telah diberitahu.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+
 
 # ==============================================================================
 # 🚀 FUNGSI UTAMA & SETUP COOKIES (Tidak diubah)
@@ -1176,7 +1278,7 @@ def main():
     bot_application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
     print(f"============================================")
-    print(f"🚀 Bot Pulsa Net (v17.4 - Stabilitas Ditingkatkan)")
+    print(f"🚀 Bot Pulsa Net (v17.5 - Media Group Profesional)")
     print(f"============================================")
     if youtube_valid: print("✅ YouTube Downloader: AKTIF (Cookies Valid)")
     else: print("❌ YouTube Downloader: MODE TERBATAS / NONAKTIF (Masalah Cookies YouTube)")
