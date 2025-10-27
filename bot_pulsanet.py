@@ -2,20 +2,17 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
 # Developer: frd099 (Diperbarui oleh Gemini)
-# Versi: 18.0 (Revitalisasi Fitur & Peningkatan UX)
+# Versi: 18.1 (Tool IP Geolocation & Revamp UI)
 #
-# CHANGELOG v18.0 (Fitur Baru & Perbaikan):
-# - DEPRECATE: Menghapus total fitur YouTube Downloader dan Media Downloader.
-#   Fokus dialihkan ke tools digital yang lebih stabil dan tidak bergantung pada cookie.
-# - NEW: Menambahkan tool "WHOIS Domain Lookup" untuk memeriksa informasi registrasi domain.
-# - NEW: Menambahkan tool "Analisis Teks" untuk menghitung karakter, kata, dan kalimat.
-# - NEW: Menambahkan informasi Uptime Bot pada pesan /start untuk transparansi status.
-# - UPDATE (UX): Merombak total desain ikon di semua menu agar lebih modern dan menarik.
-# - UPDATE (UX): Mengubah gaya bahasa pada pesan pembuka agar lebih hangat dan manusiawi.
-# - FIX (UX): Memperbaiki alur pengecekan nomor. Hasil pengecekan sebelumnya tidak lagi
-#   hilang (diedit) saat pengguna meminta untuk mengecek nomor lain.
-# - FIX (Performa): Mengoptimalkan fungsi pembersihan chat dengan mengurangi batch size
-#   untuk membuatnya terasa lebih ringan dan responsif.
+# CHANGELOG v18.1 (Fitur Baru & Perbaikan):
+# - DEPRECATE: Menghapus tool "Analisis Teks".
+# - NEW: Menambahkan tool "Info IP Address" untuk melakukan lookup geolocation
+#   dan detail lainnya dari sebuah alamat IP publik.
+# - UPDATE (UI): Merombak ulang seluruh ikon di menu utama dan menu tools agar
+#   lebih relevan, modern, dan menarik secara visual.
+# - UPDATE (UX): Mengembalikan informasi sesi (User ID, Chat ID) ke dalam
+#   pesan /start sesuai permintaan untuk transparansi.
+# - FIX: Minor text adjustments for clarity.
 # ============================================
 
 import os
@@ -31,7 +28,7 @@ import traceback
 import signal
 import sys
 import string
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # FIX 1: Import Error - ZoneInfo
 try:
@@ -44,12 +41,11 @@ except ImportError:
         sys.exit(1)
 from pathlib import Path
 
-# --- Import library baru ---
+# --- Import library ---
 import qrcode
 from PIL import Image
 import phonenumbers
 from phonenumbers import carrier, geocoder, phonenumberutil
-# FIX 2: pycountry & python-whois perlu di-install terpisah
 try:
     import pycountry
 except ImportError:
@@ -81,8 +77,8 @@ warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
 # ==============================================================================
 ADMIN_ID = os.environ.get("TELEGRAM_ADMIN_ID")
 MAX_MESSAGES_TO_TRACK = 50
-MAX_MESSAGES_TO_DELETE_PER_BATCH = 25 # Diturunkan agar lebih ringan
-BOT_START_TIME = datetime.now() # Waktu bot mulai berjalan
+MAX_MESSAGES_TO_DELETE_PER_BATCH = 25
+BOT_START_TIME = datetime.now()
 
 # --- Graceful Shutdown ---
 bot_application = None
@@ -376,17 +372,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as tz_error: logger.warning(f"⚠️ Gagal mendapatkan waktu Jakarta: {tz_error}."); greeting, icon = "Halo", "👋"
 
         uptime_str = format_uptime(BOT_START_TIME)
-
+        username_info = f"<code>@{user.username}</code>" if user.username else "<i>(tidak ada)</i>"
+        
         main_text = (f"{icon} <b>{greeting}, {user.first_name}!</b>\n\n"
                      "Selamat datang kembali di <b>Pulsa Net</b>. Ada yang bisa saya bantu untuk kebutuhan digitalmu hari ini?\n\n"
                      "Pilih salah satu layanan di bawah ini untuk memulai.\n"
                      "━━━━━━━━━━━━━━━━━━━━\n"
+                     f"👤 <b>Informasi Sesi Anda</b>\n"
+                     f"  ├─ Username: {username_info}\n"
+                     f"  ├─ User ID: <code>{user.id}</code>\n"
+                     f"  └─ Chat ID: <code>{chat_id}</code>\n\n"
                      f"🕒 <i>Bot telah aktif selama: {uptime_str}</i>")
 
         keyboard = [
             [InlineKeyboardButton("📡 Paket Data", callback_data="main_paket"), InlineKeyboardButton("💵 Pulsa Reguler", callback_data="main_pulsa")],
-            [InlineKeyboardButton("📱 Cek Info Nomor", callback_data="ask_for_number"), InlineKeyboardButton("🔧 Tools Digital", callback_data="main_tools")],
-            [InlineKeyboardButton("📈 Cek Kuota (XL/Axis)", url="https://sidompul.kmsp-store.com/"), InlineKeyboardButton("🙋 Bantuan", callback_data="main_bantuan")],
+            [InlineKeyboardButton("📱 Cek Info Nomor", callback_data="ask_for_number"), InlineKeyboardButton("🛠️ Tools Digital", callback_data="main_tools")],
+            [InlineKeyboardButton("📊 Cek Kuota (XL/Axis)", url="https://sidompul.kmsp-store.com/"), InlineKeyboardButton("❓ Bantuan", callback_data="main_bantuan")],
             [InlineKeyboardButton("🧹 Bersihkan Chat", callback_data="clear_history")],
             [InlineKeyboardButton("🌐 Kunjungi Website", url="https://pulsanet.kesug.com/beli.html")]
         ]
@@ -534,10 +535,10 @@ async def show_tools_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     try:
         await query.answer()
-        text = "<b>🔧 Tools Digital</b>\n\nPilih salah satu alat bantu yang tersedia di bawah ini:"
+        text = "<b>🛠️ Tools Digital</b>\n\nPilih salah satu alat bantu yang tersedia di bawah ini:"
         keyboard = [
-            [InlineKeyboardButton("🎨 Buat QR Code", callback_data="ask_for_qr"), InlineKeyboardButton("💱 Kalkulator Kurs", callback_data="ask_for_currency")],
-            [InlineKeyboardButton("🔎 Cek Domain (WHOIS)", callback_data="ask_for_whois"), InlineKeyboardButton("📝 Analisis Teks", callback_data="ask_for_text_analysis")],
+            [InlineKeyboardButton("🔳 Buat QR Code", callback_data="ask_for_qr"), InlineKeyboardButton("💱 Kalkulator Kurs", callback_data="ask_for_currency")],
+            [InlineKeyboardButton("🌍 Cek Domain (WHOIS)", callback_data="ask_for_whois"), InlineKeyboardButton("📍 Info IP Address", callback_data="ask_for_ip")],
             [InlineKeyboardButton("🔑 Buat Password", callback_data="gen_password"), InlineKeyboardButton("🕹️ Mini Game", callback_data="main_game")],
             [InlineKeyboardButton("⬅️ Kembali ke Menu Utama", callback_data="back_to_start")]
         ]
@@ -580,13 +581,13 @@ async def prompt_for_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Logika untuk prompt lainnya (yang aman untuk diedit)
         elif action == "ask_for_qr":
             context.user_data['state'] = 'awaiting_qr_text'
-            text = ("<b>🎨 Generator QR Code</b>\n\nKirimkan teks, tautan, nomor HP, atau informasi apa pun yang ingin Anda jadikan QR Code.")
+            text = ("<b>🔳 Generator QR Code</b>\n\nKirimkan teks, tautan, nomor HP, atau informasi apa pun yang ingin Anda jadikan QR Code.")
         elif action == "ask_for_whois":
             context.user_data['state'] = 'awaiting_whois'
-            text = ("<b>🔎 Cek Domain (WHOIS)</b>\n\nKirimkan nama domain yang ingin diperiksa (misal: <code>google.com</code> atau <code>detik.com</code>).")
-        elif action == "ask_for_text_analysis":
-            context.user_data['state'] = 'awaiting_text_analysis'
-            text = ("<b>📝 Analisis Teks</b>\n\nKirimkan paragraf atau kalimat apa pun untuk dianalisis (hitung karakter, kata, dll).")
+            text = ("<b>🌍 Cek Domain (WHOIS)</b>\n\nKirimkan nama domain yang ingin diperiksa (misal: <code>google.com</code> atau <code>detik.com</code>).")
+        elif action == "ask_for_ip":
+            context.user_data['state'] = 'awaiting_ip'
+            text = ("<b>📍 Info IP Address</b>\n\nKirimkan alamat IP publik yang ingin Anda periksa (misal: <code>8.8.8.8</code>).")
         elif action == "ask_for_currency":
             context.user_data['state'] = 'awaiting_currency'
             text = ("<b>💱 Kalkulator Kurs Mata Uang</b>\n\n"
@@ -668,17 +669,13 @@ async def handle_whois_lookup(update: Update, context: ContextTypes.DEFAULT_TYPE
         await track_message(context, status_msg)
         
         domain_name = update.message.text.lower().strip()
-        # Basic validation
         if not re.match(r'^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', domain_name):
             await status_msg.edit_text(f"❌ Format domain <code>{safe_html(domain_name)}</code> tidak valid. Contoh: <code>google.com</code>.", reply_markup=keyboard_back_to_tools, parse_mode=ParseMode.HTML)
             return
 
         def run_whois_sync(domain):
-            try:
-                return whois.whois(domain)
-            except Exception as e:
-                logger.error(f"Error di dalam thread whois: {e}")
-                raise
+            try: return whois.whois(domain)
+            except Exception as e: logger.error(f"Error di dalam thread whois: {e}"); raise
 
         w = await asyncio.to_thread(run_whois_sync, domain_name)
 
@@ -686,10 +683,9 @@ async def handle_whois_lookup(update: Update, context: ContextTypes.DEFAULT_TYPE
             await status_msg.edit_text(f"❌ Tidak dapat menemukan informasi untuk domain <code>{safe_html(domain_name)}</code>. Mungkin domain ini tidak terdaftar.", reply_markup=keyboard_back_to_tools, parse_mode=ParseMode.HTML)
             return
         
-        # Format tanggal agar lebih mudah dibaca
         def format_whois_date(d):
             if not d: return "N/A"
-            if isinstance(d, list): d = d[0] # Ambil tanggal pertama jika ada banyak
+            if isinstance(d, list): d = d[0]
             if isinstance(d, datetime): return d.strftime('%d %B %Y')
             return str(d)
 
@@ -705,7 +701,7 @@ async def handle_whois_lookup(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔎 Cek Domain Lain", callback_data="ask_for_whois")],
+            [InlineKeyboardButton("🌍 Cek Domain Lain", callback_data="ask_for_whois")],
             [InlineKeyboardButton("⬅️ Kembali ke Tools", callback_data="main_tools")]])
             
         await status_msg.edit_text(result_text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
@@ -714,37 +710,63 @@ async def handle_whois_lookup(update: Update, context: ContextTypes.DEFAULT_TYPE
         await send_admin_log(context, e, update, "handle_whois_lookup")
         if status_msg: await status_msg.edit_text("❌ Maaf, terjadi kesalahan saat mengambil data WHOIS. Ini bisa karena domain dilindungi privasi atau server WHOIS tidak merespon.", reply_markup=keyboard_back_to_tools, parse_mode=ParseMode.HTML)
 
-async def handle_text_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_ip_lookup(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    status_msg = None
     try:
-        text = update.message.text
-        char_count = len(text)
-        char_count_no_space = len(text.replace(" ", ""))
-        word_count = len(text.split())
-        # Hitung kalimat dengan regex sederhana
-        sentence_count = len(re.findall(r'[^.!?]+[.!?]', text))
-        if sentence_count == 0 and char_count > 0:
-            sentence_count = 1 # Jika tidak ada tanda baca, anggap 1 kalimat
+        status_msg = await update.message.reply_text("📍 Melacak informasi IP...", parse_mode=ParseMode.HTML)
+        await track_message(context, status_msg)
 
+        ip_address = update.message.text.strip()
+        # Regex to validate IPv4 address
+        if not re.match(r"^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$", ip_address):
+            await status_msg.edit_text(f"❌ Format alamat IP <code>{safe_html(ip_address)}</code> tidak valid. Contoh: <code>8.8.8.8</code>.", reply_markup=keyboard_back_to_tools, parse_mode=ParseMode.HTML)
+            return
+
+        api_url = f"http://ip-api.com/json/{ip_address}"
+        async with httpx.AsyncClient() as client:
+            response = await client.get(api_url, timeout=10)
+            response.raise_for_status()
+        
+        data = response.json()
+
+        if data.get("status") == "fail":
+            await status_msg.edit_text(f"❌ Gagal mendapatkan info untuk IP <code>{safe_html(ip_address)}</code>. Pesan: <i>{safe_html(data.get('message', 'Tidak diketahui'))}</i>.", reply_markup=keyboard_back_to_tools, parse_mode=ParseMode.HTML)
+            return
+
+        country_code = data.get('countryCode', '')
+        country_flag = ""
+        try:
+            country = pycountry.countries.get(alpha_2=country_code)
+            if country and hasattr(country, 'flag'):
+                country_flag = country.flag
+        except Exception:
+            pass
+        
+        lat, lon = data.get('lat', 0), data.get('lon', 0)
+        maps_link = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}" if lat and lon else "#"
+        
         result_text = (
-            f"<b>📝 Hasil Analisis Teks</b>\n"
-            f"---------------------------\n"
-            f"<b>Karakter (termasuk spasi):</b> {char_count}\n"
-            f"<b>Karakter (tanpa spasi):</b> {char_count_no_space}\n"
-            f"<b>Jumlah Kata:</b> {word_count}\n"
-            f"<b>Jumlah Kalimat:</b> {sentence_count}\n"
+            f"<b>✅ Informasi untuk IP: <code>{data.get('query')}</code></b>\n"
+            f"-----------------------------------------\n"
+            f"<b>Lokasi:</b> {country_flag} {safe_html(data.get('city'))}, {safe_html(data.get('regionName'))}, {safe_html(data.get('country'))}\n"
+            f"<b>Zona Waktu:</b> {safe_html(data.get('timezone'))}\n"
+            f"<b>ISP:</b> {safe_html(data.get('isp'))}\n"
+            f"<b>Organisasi:</b> {safe_html(data.get('org'))}\n\n"
+            f"<a href='{maps_link}'>Buka di Google Maps</a>"
         )
 
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📝 Analisis Teks Lain", callback_data="ask_for_text_analysis")],
+            [InlineKeyboardButton("📍 Cek IP Lain", callback_data="ask_for_ip")],
             [InlineKeyboardButton("⬅️ Kembali ke Tools", callback_data="main_tools")]])
-        
-        sent_msg = await update.message.reply_text(result_text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
-        await track_message(context, sent_msg)
+            
+        await status_msg.edit_text(result_text, reply_markup=keyboard, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
+    except httpx.RequestError as e:
+        await send_admin_log(context, e, update, "handle_ip_lookup (RequestError)")
+        if status_msg: await status_msg.edit_text("⚠️ Gagal menghubungi layanan IP Geolocation. Coba lagi nanti.", reply_markup=keyboard_back_to_tools, parse_mode=ParseMode.HTML)
     except Exception as e:
-        await send_admin_log(context, e, update, "handle_text_analysis")
-        error_msg = await update.message.reply_text("❌ Maaf, terjadi kesalahan saat menganalisis teks.", reply_markup=keyboard_back_to_tools, parse_mode=ParseMode.HTML)
-        await track_message(context, error_msg)
+        await send_admin_log(context, e, update, "handle_ip_lookup")
+        if status_msg: await status_msg.edit_text("❌ Maaf, terjadi kesalahan teknis saat melacak IP.", reply_markup=keyboard_back_to_tools, parse_mode=ParseMode.HTML)
 
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -754,7 +776,6 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         phone_pattern = r'(\+?\d{1,3}[\s-]?\d[\d\s-]{7,14}\d)'
 
         if state == 'awaiting_number':
-            # Hapus pesan prompt "Silakan kirimkan nomor..."
             if 'messages_to_clear' in context.user_data and context.user_data['messages_to_clear']:
                 try: await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=context.user_data['messages_to_clear'][-1])
                 except Exception: pass
@@ -798,7 +819,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             finally:
                  context.user_data.pop('state', None)
                  keyboard_next = InlineKeyboardMarkup([
-                     [InlineKeyboardButton("🎨 Buat QR Lain", callback_data="ask_for_qr")],
+                     [InlineKeyboardButton("🔳 Buat QR Lain", callback_data="ask_for_qr")],
                      [InlineKeyboardButton("⬅️ Kembali ke Tools", callback_data="main_tools")]])
                  sent_msg2 = await update.message.reply_text("Apa yang ingin Anda lakukan selanjutnya?", reply_markup=keyboard_next)
                  await track_message(context, sent_msg2)
@@ -809,8 +830,8 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             context.user_data.pop('state', None)
             return
 
-        elif state == 'awaiting_text_analysis':
-            await handle_text_analysis(update, context)
+        elif state == 'awaiting_ip':
+            await handle_ip_lookup(update, context)
             context.user_data.pop('state', None)
             return
 
@@ -938,17 +959,17 @@ def main():
     bot_application.add_handler(CallbackQueryHandler(show_xl_paket_submenu, pattern=r'^list_paket_xl$'))
     bot_application.add_handler(CallbackQueryHandler(show_product_list, pattern=r'^list_(paket|pulsa)_.+$'))
     bot_application.add_handler(CallbackQueryHandler(show_package_details, pattern=r'^pkg_\d+_[a-z0-9_]+$'))
-    bot_application.add_handler(CallbackQueryHandler(prompt_for_action, pattern=r'^ask_for_(number|qr|currency|whois|text_analysis)$'))
+    bot_application.add_handler(CallbackQueryHandler(prompt_for_action, pattern=r'^ask_for_(number|qr|currency|whois|ip)$'))
     bot_application.add_handler(CallbackQueryHandler(show_game_menu, pattern='^main_game$'))
     bot_application.add_handler(CallbackQueryHandler(play_game, pattern=r'^game_play_(rock|scissors|paper)$'))
     bot_application.add_handler(CallbackQueryHandler(generate_password, pattern='^gen_password$'))
     bot_application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
-    print(f"============================================")
-    print(f"🚀 Bot Pulsa Net (v18.0 - Revitalisasi Fitur)")
-    print(f"============================================")
+    print(f"====================================================")
+    print(f"🚀 Bot Pulsa Net (v18.1 - Tool IP Geolocation)")
+    print(f"====================================================")
     print("✅ Fitur Inti: AKTIF")
-    print("✅ Tools Digital: WHOIS, Analisis Teks, QR Code, Kurs, Password Gen, Game")
+    print("✅ Tools Digital: IP Info, WHOIS, QR Code, Kurs, Password Gen, Game")
     print("\n💡 Bot sedang berjalan. Tekan Ctrl+C untuk berhenti dengan aman.")
     print("-" * 60)
     bot_application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
