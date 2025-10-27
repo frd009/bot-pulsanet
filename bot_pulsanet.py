@@ -2,18 +2,17 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
 # Developer: frd099 (Diperbarui oleh Gemini)
-# Versi: 18.2 (Persistent History & Base64 Tool)
+# Versi: 18.3 (Professional UI & Stability Fix)
 #
-# CHANGELOG v18.2 (Fitur Baru & Perbaikan):
-# - NEW: Menambahkan tool "Base64 Encoder/Decoder" dengan deteksi otomatis.
-#   Sangat berguna untuk pengembang dan tugas digital lainnya.
-# - UPDATE (UX Major): Merombak total alur kerja semua tools. Hasil dari setiap
-#   tool (WHOIS, IP, QR, Kurs, dll.) kini bersifat persisten dan tidak akan hilang
-#   saat pengguna menekan tombol navigasi untuk mencoba lagi.
-# - UPDATE (UX): Menyempurnakan pesan greetings /start agar lebih manusiawi,
-#   menghilangkan frasa "Selamat datang kembali".
-# - UPDATE (UI): Melakukan penyesuaian ikon lebih lanjut agar lebih relevan
-#   dan konsisten di seluruh menu.
+# CHANGELOG v18.3 (Fitur Baru & Perbaikan):
+# - UPDATE (UI Major): Merombak total tampilan hasil dari semua tools (WHOIS, IP,
+#   Nomor, dll.) dengan layout yang lebih bersih, profesional, dan elegan.
+# - UPDATE (UI): Menyempurnakan teks dan separator di menu utama untuk
+#   tampilan yang lebih rapi.
+# - FIX (Stabilitas): Menambahkan penanganan error spesifik pada fungsi
+#   pembersihan chat. Bot sekarang tidak akan error jika pengguna keluar dari
+#   chat saat proses pembersihan sedang berlangsung.
+# - UPDATE (UX): Peningkatan konsistensi teks pada tombol-tombol navigasi.
 # ============================================
 
 import os
@@ -36,7 +35,6 @@ from datetime import datetime
 try:
     from zoneinfo import ZoneInfo
 except ImportError:
-    # Fallback untuk Python < 3.9
     try:
         from backports.zoneinfo import ZoneInfo
     except ImportError:
@@ -63,7 +61,7 @@ except ImportError:
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.constants import ParseMode
-from telegram.error import BadRequest
+from telegram.error import BadRequest, Forbidden
 from telegram.request import HTTPXRequest
 
 # Konfigurasi logging
@@ -283,7 +281,8 @@ def get_provider_info_global(phone_number_str: str) -> str:
             if phone_number_str.startswith('08'): phone_number_str = '+62' + phone_number_str[1:]
             else: phone_number_str = '+' + phone_number_str
         phone_number = phonenumbers.parse(phone_number_str, None)
-        if not phonenumbers.is_valid_number(phone_number): return f"❌ Nomor <code>{safe_html(phone_number_str)}</code> tidak valid."
+        if not phonenumbers.is_valid_number(phone_number):
+            return f"📱 <b>Informasi Nomor</b>\n\n❌ Nomor <code>{safe_html(phone_number_str)}</code> tidak valid."
         country_code = phone_number.country_code
         region_code = phonenumberutil.region_code_for_country_code(country_code)
         try:
@@ -293,14 +292,15 @@ def get_provider_info_global(phone_number_str: str) -> str:
         number_type_map = {phonenumbers.PhoneNumberType.MOBILE: "Ponsel", phonenumbers.PhoneNumberType.FIXED_LINE: "Telepon Rumah", phonenumbers.PhoneNumberType.FIXED_LINE_OR_MOBILE: "Ponsel / Telepon Rumah", phonenumbers.PhoneNumberType.TOLL_FREE: "Bebas Pulsa", phonenumbers.PhoneNumberType.VOIP: "VoIP"}
         number_type = number_type_map.get(phonenumbers.number_type(phone_number), "Lainnya")
         carrier_name = carrier.name_for_number(phone_number, "en") or "Tidak terdeteksi"
-        return (f"<b>✅ Hasil Pengecekan untuk <code>{safe_html(phonenumbers.format_number(phone_number, phonenumbers.PhoneNumberFormat.INTERNATIONAL))}</code></b>\n"
-                f"-----------------------------------------\n"
+        
+        return (f"📱 <b>Informasi Nomor</b>\n"
+                f"╰ <code>{safe_html(phonenumbers.format_number(phone_number, phonenumbers.PhoneNumberFormat.INTERNATIONAL))}</code>\n\n"
                 f"<b>Negara:</b> {country_flag} {country_name} (+{country_code})\n"
                 f"<b>Valid:</b> ✅ Ya\n"
                 f"<b>Tipe:</b> {number_type}\n"
-                f"<b>Operator Asli:</b> {carrier_name}\n"
-                f"<i>(ℹ️ Info operator mungkin tidak akurat jika nomor sudah porting)</i>")
-    except phonenumberutil.NumberParseException: return f"❌ Format nomor <code>{safe_html(phone_number_str)}</code> salah. Harap gunakan format internasional (contoh: +628123...)."
+                f"<b>Operator Asli:</b> {carrier_name}\n\n"
+                f"<i>ℹ️ Info operator mungkin tidak akurat jika nomor sudah porting.</i>")
+    except phonenumberutil.NumberParseException: return f"❌ Format nomor <code>{safe_html(phone_number_str)}</code> salah."
     except Exception as e:
         logger.error(f"Error di get_provider_info_global: {e}")
         return "⚠️ Terjadi kesalahan saat memproses nomor."
@@ -330,6 +330,7 @@ async def track_message(context: ContextTypes.DEFAULT_TYPE, message):
         if len(context.user_data['messages_to_clear']) >= MAX_MESSAGES_TO_TRACK:
             context.user_data['messages_to_clear'] = context.user_data['messages_to_clear'][-(MAX_MESSAGES_TO_TRACK-1):]
         context.user_data['messages_to_clear'].append(message.message_id)
+
 async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id; loading_msg = None
     try:
@@ -338,27 +339,36 @@ async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await asyncio.sleep(0.1)
             try: await context.bot.delete_message(chat_id=chat_id, message_id=update.callback_query.message.message_id)
             except Exception: pass
+        
         loading_msg = await context.bot.send_message(chat_id=chat_id, text="🔄 <b>Menghapus jejak pesan...</b> Mohon tunggu.", parse_mode=ParseMode.HTML)
+        await asyncio.sleep(0.5) # Jeda singkat untuk stabilitas
+
         messages_to_clear = list(set(context.user_data.get('messages_to_clear', [])))[-MAX_MESSAGES_TO_DELETE_PER_BATCH:]
         delete_tasks = [context.bot.delete_message(chat_id=chat_id, message_id=msg_id) for msg_id in messages_to_clear if msg_id != loading_msg.message_id]
         results = await asyncio.gather(*delete_tasks, return_exceptions=True)
         success_count = sum(1 for r in results if not isinstance(r, Exception))
-        if (fail_count := len(results) - success_count) > 0: logger.warning(f"Gagal menghapus {fail_count} pesan di chat {chat_id}.")
+        
         try: await context.bot.delete_message(chat_id=chat_id, message_id=loading_msg.message_id)
         except Exception: pass
+        
         context.user_data['messages_to_clear'] = []
         confirmation_text = f"✅ <b>Selesai!</b>\n\nBerhasil menghapus <b>{success_count}</b> pesan dari sesi ini. Semuanya kembali bersih!"
-        sent_msg = await context.bot.send_message(chat_id=chat_id, text=confirmation_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-        await track_message(context, sent_msg)
-    except Exception as e:
-        await send_admin_log(context, e, update, "clear_history")
-        if loading_msg:
-             try: await context.bot.delete_message(chat_id=chat_id, message_id=loading_msg.message_id)
-             except Exception: pass
+        
+        # FIX: Bungkus pengiriman pesan akhir untuk menangani user yang sudah keluar
         try:
-            error_msg = await context.bot.send_message(chat_id=chat_id, text="❌ Aduh, ada sedikit masalah saat bersih-bersih. Coba lagi nanti ya.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-            await track_message(context, error_msg)
-        except Exception as e_inner: logger.error(f"❌ Gagal mengirim pesan error di clear_history: {e_inner}")
+            sent_msg = await context.bot.send_message(chat_id=chat_id, text=confirmation_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+            await track_message(context, sent_msg)
+        except (BadRequest, Forbidden) as e:
+            # Jika user memblokir bot atau keluar dari chat, jangan error.
+            logger.warning(f"Gagal mengirim konfirmasi hapus ke chat {chat_id}. Mungkin user sudah keluar. Error: {e}")
+            
+    except Exception as e:
+        # Hanya log error tak terduga
+        if not isinstance(e, (BadRequest, Forbidden)):
+            await send_admin_log(context, e, update, "clear_history")
+        try:
+            if loading_msg: await context.bot.delete_message(chat_id=chat_id, message_id=loading_msg.message_id)
+        except Exception: pass
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -378,13 +388,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         username_info = f"<code>@{user.username}</code>" if user.username else "<i>(tidak ada)</i>"
         
         main_text = (f"{icon} <b>{greeting}, {user.first_name}!</b>\n\n"
-                     "Saya siap membantu kebutuhan digitalmu hari ini. Silakan pilih layanan yang kamu butuhkan dari menu di bawah.\n"
-                     "━━━━━━━━━━━━━━━━━━━━\n"
-                     f"👤 <b>Informasi Sesi Anda</b>\n"
+                     "Selamat datang di <b>Pulsa Net</b>.\nPlatform terpadu untuk semua kebutuhan digital Anda.\n\n"
+                     "Silakan pilih layanan di bawah untuk memulai.\n"
+                     "— — — — — — — — — — — —\n"
+                     f"👤 <b>Informasi Sesi</b>\n"
                      f"  ├─ Username: {username_info}\n"
                      f"  ├─ User ID: <code>{user.id}</code>\n"
                      f"  └─ Chat ID: <code>{chat_id}</code>\n\n"
-                     f"🕒 <i>Bot online selama: {uptime_str}</i>")
+                     f"🕒 <b>Status Uptime:</b> {uptime_str}")
 
         keyboard = [
             [InlineKeyboardButton("📡 Paket Data", callback_data="main_paket"), InlineKeyboardButton("💵 Pulsa Reguler", callback_data="main_pulsa")],
@@ -563,50 +574,37 @@ async def prompt_for_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         back_button_callback = "main_tools"
         if action == "back_to_start": back_button_callback = "back_to_start"
 
-        # Hapus pesan navigasi sebelumnya ("Coba lagi", dll) untuk kebersihan
         try:
             await context.bot.delete_message(chat_id, query.message.message_id)
         except Exception:
-            # Jika gagal (misal, pesan terlalu lama), cukup edit jadi titik
             try: await query.edit_message_text("...", reply_markup=None)
             except Exception: pass
 
         if action == "ask_for_number":
             context.user_data['state'] = 'awaiting_number'
-            text = ("<b>📱 Cek Info Nomor Telepon (Global)</b>\n\n"
-                    "Silakan kirimkan nomor HP yang ingin Anda periksa.\n"
-                    "Format internasional (<code>+62...</code>) sangat disarankan untuk akurasi.")
+            text = ("<b>📱 Cek Info Nomor Telepon</b>\n\nKirimkan nomor HP yang ingin Anda periksa. Format internasional (<code>+62...</code>) sangat disarankan.")
             back_button_callback = "back_to_start"
         elif action == "ask_for_qr":
             context.user_data['state'] = 'awaiting_qr_text'
-            text = ("<b>🔳 Generator QR Code</b>\n\nKirimkan teks, tautan, nomor HP, atau informasi apa pun yang ingin Anda jadikan QR Code.")
+            text = ("<b>🔳 Generator QR Code</b>\n\nKirimkan teks atau tautan yang ingin Anda jadikan QR Code.")
         elif action == "ask_for_whois":
             context.user_data['state'] = 'awaiting_whois'
-            text = ("<b>🌍 Cek Domain (WHOIS)</b>\n\nKirimkan nama domain yang ingin diperiksa (misal: <code>google.com</code> atau <code>detik.com</code>).")
+            text = ("<b>🌍 Cek Domain (WHOIS)</b>\n\nKirimkan nama domain yang ingin diperiksa (contoh: <code>google.com</code>).")
         elif action == "ask_for_ip":
             context.user_data['state'] = 'awaiting_ip'
-            text = ("<b>📍 Info IP Address</b>\n\nKirimkan alamat IP publik yang ingin Anda periksa (misal: <code>8.8.8.8</code>).")
+            text = ("<b>📍 Info IP Address</b>\n\nKirimkan alamat IP publik yang ingin diperiksa (contoh: <code>8.8.8.8</code>).")
         elif action == "ask_for_base64":
             context.user_data['state'] = 'awaiting_base64'
-            text = ("<b>📦 Base64 Encoder/Decoder</b>\n\nKirimkan teks yang ingin di-encode atau di-decode. Bot akan mendeteksinya secara otomatis.")
+            text = ("<b>📦 Base64 Encoder/Decoder</b>\n\nKirimkan teks untuk di-encode atau di-decode secara otomatis.")
         elif action == "ask_for_currency":
             context.user_data['state'] = 'awaiting_currency'
-            text = ("<b>💱 Kalkulator Kurs Mata Uang</b>\n\n"
-                    "Kirimkan permintaan konversi Anda dalam format:\n"
-                    "<code>[jumlah] [kode_asal] to [kode_tujuan]</code>\n\n"
-                    "<b>Contoh:</b>\n"
-                    "• <code>100 USD to IDR</code>\n"
-                    "• <code>50 EUR JPY</code> (tanpa 'to' juga bisa)\n"
-                    "• <code>1000000 IDR MYR</code>")
+            text = ("<b>💱 Kalkulator Kurs Mata Uang</b>\n\nFormat: <code>[jumlah] [kode_asal] to [kode_tujuan]</code>\nContoh: <code>100 USD to IDR</code>")
         else:
             logger.warning(f"Aksi tidak dikenal di prompt_for_action: {action}")
             return
         
-        keyboard = [[InlineKeyboardButton("⬅️ Batal & Kembali", callback_data=back_button_callback)]]
-        # Kirim prompt sebagai pesan baru
-        sent_prompt = await context.bot.send_message(chat_id=chat_id, text=text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode=ParseMode.HTML)
+        keyboard = [[InlineKeyboardButton("⬅️ Batal", callback_data=back_button_callback)]]
+        sent_prompt = await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
         await track_message(context, sent_prompt)
 
     except Exception as e:
@@ -629,8 +627,7 @@ async def handle_currency_conversion(update: Update, context: ContextTypes.DEFAU
              return
         api_url = f"https://open.er-api.com/v6/latest/{base_curr}"
         async with httpx.AsyncClient() as client:
-            response = await client.get(api_url, timeout=10)
-            response.raise_for_status()
+            response = await client.get(api_url, timeout=10); response.raise_for_status()
         data = response.json()
         if data.get("result") == "success" and target_curr in data.get("rates", {}):
             rate = data["rates"][target_curr]
@@ -639,7 +636,7 @@ async def handle_currency_conversion(update: Update, context: ContextTypes.DEFAU
                 base_name = pycountry.currencies.get(alpha_3=base_curr).name
                 target_name = pycountry.currencies.get(alpha_3=target_curr).name
             except Exception: base_name, target_name = base_curr, target_curr
-            result_text = (f"✅ <b>Hasil Konversi</b>\n\n"
+            result_text = (f"💱 <b>Hasil Konversi Kurs</b>\n\n"
                            f"<b>Dari:</b> {amount:,.2f} {base_curr} ({base_name})\n"
                            f"<b>Ke:</b> {converted_amount:,.2f} {target_curr} ({target_name})\n\n"
                            f"<i>Kurs 1 {base_curr} ≈ {rate:,.4f} {target_curr}</i>")
@@ -652,7 +649,7 @@ async def handle_currency_conversion(update: Update, context: ContextTypes.DEFAU
         await send_admin_log(context, e, update, "handle_currency_conversion")
         if status_msg: await status_msg.edit_text("❌ Maaf, terjadi kesalahan teknis.", parse_mode=ParseMode.HTML)
     finally:
-        keyboard = [[InlineKeyboardButton("💱 Hitung Kurs Lain", callback_data="ask_for_currency")], [InlineKeyboardButton("⬅️ Kembali ke Tools", callback_data="main_tools")]]
+        keyboard = [[InlineKeyboardButton("💱 Hitung Kurs Lagi", callback_data="ask_for_currency")], [InlineKeyboardButton("⬅️ Kembali ke Tools", callback_data="main_tools")]]
         sent_msg2 = await update.message.reply_text("Pilih aksi selanjutnya:", reply_markup=InlineKeyboardMarkup(keyboard))
         await track_message(context, sent_msg2)
 
@@ -677,8 +674,8 @@ async def handle_whois_lookup(update: Update, context: ContextTypes.DEFAULT_TYPE
             if isinstance(d, list): d = d[0]
             if isinstance(d, datetime): return d.strftime('%d %B %Y')
             return str(d)
-        result_text = (f"<b>✅ Informasi WHOIS untuk: <code>{w.domain_name}</code></b>\n"
-                       f"-----------------------------------------\n"
+        result_text = (f"🌍 <b>Informasi WHOIS</b>\n"
+                       f"╰ <code>{w.domain_name}</code>\n\n"
                        f"<b>Pendaftar:</b> {safe_html(w.registrar) or 'N/A'}\n"
                        f"<b>Dibuat:</b> {format_whois_date(w.creation_date)}\n"
                        f"<b>Kedaluwarsa:</b> {format_whois_date(w.expiration_date)}\n"
@@ -705,18 +702,18 @@ async def handle_ip_lookup(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         api_url = f"http://ip-api.com/json/{ip_address}"
         async with httpx.AsyncClient() as client:
-            response = await client.get(api_url, timeout=10)
-            response.raise_for_status()
+            response = await client.get(api_url, timeout=10); response.raise_for_status()
         data = response.json()
         if data.get("status") == "fail":
             await status_msg.edit_text(f"❌ Gagal mendapatkan info untuk IP <code>{safe_html(ip_address)}</code>.", parse_mode=ParseMode.HTML)
             return
-        country_flag = pycountry.countries.get(alpha_2=data.get('countryCode', '')).flag
+        try: country_flag = pycountry.countries.get(alpha_2=data.get('countryCode', '')).flag
+        except: country_flag = "🏳️"
         lat, lon = data.get('lat', 0), data.get('lon', 0)
         maps_link = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}" if lat and lon else "#"
-        result_text = (f"<b>✅ Informasi untuk IP: <code>{data.get('query')}</code></b>\n"
-                       f"-----------------------------------------\n"
-                       f"<b>Lokasi:</b> {country_flag} {safe_html(data.get('city'))}, {safe_html(data.get('regionName'))}, {safe_html(data.get('country'))}\n"
+        result_text = (f"📍 <b>Informasi Alamat IP</b>\n"
+                       f"╰ <code>{data.get('query')}</code>\n\n"
+                       f"<b>Lokasi:</b> {country_flag} {safe_html(data.get('city'))}, {safe_html(data.get('country'))}\n"
                        f"<b>Zona Waktu:</b> {safe_html(data.get('timezone'))}\n"
                        f"<b>ISP:</b> {safe_html(data.get('isp'))}\n"
                        f"<b>Organisasi:</b> {safe_html(data.get('org'))}\n\n"
@@ -738,39 +735,29 @@ async def handle_base64(update: Update, context: ContextTypes.DEFAULT_TYPE):
         status_msg = await update.message.reply_text("📦 Memproses teks...", parse_mode=ParseMode.HTML)
         await track_message(context, status_msg)
         original_text = update.message.text
-        
-        # Coba decode dulu, jika gagal, berarti harus di-encode
         try:
-            # Padding check
             missing_padding = len(original_text) % 4
-            if missing_padding:
-                original_text += '=' * (4 - missing_padding)
-            
+            if missing_padding: original_text += '=' * (4 - missing_padding)
             decoded_text = base64.b64decode(original_text).decode('utf-8')
-            operation = "DECODE"
-            result_text = decoded_text
-            input_text = original_text # show the padded version
+            operation, result_text, input_text = "DECODE", decoded_text, original_text
         except (ValueError, base64.binascii.Error):
             encoded_text = base64.b64encode(original_text.encode('utf-8')).decode('utf-8')
-            operation = "ENCODE"
-            result_text = encoded_text
-            input_text = original_text
+            operation, result_text, input_text = "ENCODE", encoded_text, original_text
 
         if operation == "ENCODE":
-            final_text = (f"✅ <b>Hasil Encode Base64</b>\n\n"
+            final_text = (f"📦 <b>Hasil Encode Base64</b>\n\n"
                           f"<b>Teks Asli:</b>\n<pre>{safe_html(input_text)}</pre>\n"
                           f"<b>Hasil Encode:</b>\n<code>{safe_html(result_text)}</code>")
-        else: # DECODE
-            final_text = (f"✅ <b>Hasil Decode Base64</b>\n\n"
+        else:
+            final_text = (f"📦 <b>Hasil Decode Base64</b>\n\n"
                           f"<b>Teks Base64:</b>\n<code>{safe_html(input_text)}</code>\n"
                           f"<b>Hasil Decode:</b>\n<pre>{safe_html(result_text)}</pre>")
-            
         await status_msg.edit_text(final_text, parse_mode=ParseMode.HTML)
     except Exception as e:
         await send_admin_log(context, e, update, "handle_base64")
         if status_msg: await status_msg.edit_text("❌ Terjadi kesalahan. Pastikan teks yang Anda kirim valid.", parse_mode=ParseMode.HTML)
     finally:
-        keyboard = [[InlineKeyboardButton("📦 Proses Teks Lain", callback_data="ask_for_base64")], [InlineKeyboardButton("⬅️ Kembali ke Tools", callback_data="main_tools")]]
+        keyboard = [[InlineKeyboardButton("📦 Proses Teks Lagi", callback_data="ask_for_base64")], [InlineKeyboardButton("⬅️ Kembali ke Tools", callback_data="main_tools")]]
         sent_msg2 = await update.message.reply_text("Pilih aksi selanjutnya:", reply_markup=InlineKeyboardMarkup(keyboard))
         await track_message(context, sent_msg2)
 
@@ -781,23 +768,16 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         message_text = update.message.text
         phone_pattern = r'(\+?\d{1,3}[\s-]?\d[\d\s-]{7,14}\d)'
 
-        # Hapus pesan prompt sebelumnya jika ada state
         if state and 'messages_to_clear' in context.user_data and context.user_data['messages_to_clear']:
-            try:
-                await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=context.user_data['messages_to_clear'][-1])
+            try: await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=context.user_data['messages_to_clear'][-1])
             except Exception: pass
 
-        # Proses berdasarkan state
         if state == 'awaiting_number':
             context.user_data.pop('state', None)
             numbers = re.findall(phone_pattern, message_text)
-            if numbers:
-                responses = [get_provider_info_global(num.replace(" ", "").replace("-", "")) for num in numbers]
-                sent_msg = await update.message.reply_text("\n\n---\n\n".join(responses), parse_mode=ParseMode.HTML)
-            else:
-                sent_msg = await update.message.reply_text("❌ Format nomor tidak valid. Gunakan format internasional.", parse_mode=ParseMode.HTML)
+            response_text = "\n\n".join([get_provider_info_global(num.replace(" ", "").replace("-", "")) for num in numbers]) if numbers else "❌ Format nomor tidak valid."
+            sent_msg = await update.message.reply_text(response_text, parse_mode=ParseMode.HTML)
             await track_message(context, sent_msg)
-            # Kirim navigasi di pesan terpisah
             keyboard_next = [[InlineKeyboardButton("📱 Cek Nomor Lain", callback_data="ask_for_number")], [InlineKeyboardButton("🏠 Menu Utama", callback_data="back_to_start")]]
             nav_msg = await update.message.reply_text("Pilih aksi selanjutnya:", reply_markup=InlineKeyboardMarkup(keyboard_next))
             await track_message(context, nav_msg)
@@ -808,21 +788,16 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             loading_msg = await update.message.reply_text("⏳ Membuat QR Code...")
             await track_message(context, loading_msg)
             try:
-                formatted_text = format_qr_data(message_text)
-                img = qrcode.make(formatted_text)
-                bio = io.BytesIO()
-                bio.name = 'qrcode.png'
-                img.save(bio, 'PNG')
-                bio.seek(0)
-                caption_text = f"✅ <b>QR Code Berhasil Dibuat!</b>\n\n<b>Data:</b> <code>{safe_html(message_text)}</code>"
-                sent_photo = await update.message.reply_photo(photo=bio, caption=caption_text, parse_mode=ParseMode.HTML)
-                await track_message(context, sent_photo)
-                await loading_msg.delete()
+                img = qrcode.make(format_qr_data(message_text))
+                bio = io.BytesIO(); bio.name = 'qrcode.png'; img.save(bio, 'PNG'); bio.seek(0)
+                caption = f"🔳 <b>QR Code Dibuat</b>\n\n<b>Data:</b> <code>{safe_html(message_text)}</code>"
+                sent_photo = await update.message.reply_photo(photo=bio, caption=caption, parse_mode=ParseMode.HTML)
+                await track_message(context, sent_photo); await loading_msg.delete()
             except Exception as e:
-                await send_admin_log(context, e, update, "handle_text_message (QR Code)")
+                await send_admin_log(context, e, update, "QR Code")
                 await loading_msg.edit_text("❌ Gagal membuat QR Code.", parse_mode=ParseMode.HTML)
             finally:
-                 keyboard_next = [[InlineKeyboardButton("🔳 Buat QR Lain", callback_data="ask_for_qr")], [InlineKeyboardButton("⬅️ Kembali ke Tools", callback_data="main_tools")]]
+                 keyboard_next = [[InlineKeyboardButton("🔳 Buat QR Lagi", callback_data="ask_for_qr")], [InlineKeyboardButton("⬅️ Kembali ke Tools", callback_data="main_tools")]]
                  sent_msg2 = await update.message.reply_text("Pilih aksi selanjutnya:", reply_markup=InlineKeyboardMarkup(keyboard_next))
                  await track_message(context, sent_msg2)
             return
@@ -832,23 +807,16 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         elif state == 'awaiting_base64': context.user_data.pop('state', None); await handle_base64(update, context); return
         elif state == 'awaiting_currency': context.user_data.pop('state', None); await handle_currency_conversion(update, context); return
 
-        # Deteksi nomor telepon otomatis di luar state
         if not state and (numbers := re.findall(phone_pattern, message_text)) and len(numbers) <= 3:
             responses = [get_provider_info_global(num.replace(" ", "").replace("-", "")) for num in numbers]
             sent_msg = await update.message.reply_text(
-                "💡 <b>Info Nomor Terdeteksi Otomatis:</b>\n\n" + "\n\n---\n\n".join(responses) +
-                "\n\n<i>Gunakan '📱 Cek Info Nomor' dari menu /start untuk cek manual.</i>",
+                "💡 <b>Info Nomor Terdeteksi Otomatis:</b>\n\n" + "\n\n".join(responses),
                 parse_mode=ParseMode.HTML, disable_web_page_preview=True
             )
             await track_message(context, sent_msg)
             
     except Exception as e:
         await send_admin_log(context, e, update, "handle_text_message")
-        try:
-            error_msg = await update.message.reply_text("❌ Maaf, terjadi kesalahan.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-            await track_message(context, error_msg)
-        except Exception as e_inner:
-             logger.error(f"❌ Gagal mengirim pesan error di handle_text_message: {e_inner}")
 
 async def show_game_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -867,54 +835,41 @@ async def show_game_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else: raise e
     except Exception as e:
         await send_admin_log(context, e, update, "show_game_menu")
-        await query.edit_message_text("❌ Maaf, terjadi kesalahan.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
 
 async def play_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     try:
         await query.answer()
         user_choice = query.data.split('_')[2]
-        choices = ['rock', 'scissors', 'paper']
-        bot_choice = random.choice(choices)
+        bot_choice = random.choice(['rock', 'scissors', 'paper'])
         emoji = {'rock': '🗿', 'scissors': '✂️', 'paper': '📄'}
-        result_text = ""
         if user_choice == bot_choice: result_text = "<b>Hasilnya Seri!</b> 🤝"
-        elif (user_choice == 'rock' and bot_choice == 'scissors') or \
-             (user_choice == 'scissors' and bot_choice == 'paper') or \
-             (user_choice == 'paper' and bot_choice == 'rock'): result_text = "<b>Kamu Menang!</b> 🎉"
+        elif (user_choice, bot_choice) in [('rock', 'scissors'), ('scissors', 'paper'), ('paper', 'rock')]:
+            result_text = "<b>Kamu Menang!</b> 🎉"
         else: result_text = "<b>Kamu Kalah!</b> 🦾"
         text = (f"Pilihanmu: {user_choice.capitalize()} {emoji[user_choice]}\n"
                 f"Pilihan Bot: {bot_choice.capitalize()} {emoji[bot_choice]}\n\n{result_text}")
-        keyboard = [
-            [InlineKeyboardButton("🔄 Main Lagi", callback_data="main_game")],
-            [InlineKeyboardButton("🏠 Kembali ke Menu Utama", callback_data="back_to_start")]
-        ]
+        keyboard = [[InlineKeyboardButton("🔄 Main Lagi", callback_data="main_game")], [InlineKeyboardButton("🏠 Menu Utama", callback_data="back_to_start")]]
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
     except BadRequest as e:
         if "Message is not modified" in str(e): logger.info(f"Pesan {query.message.message_id} tidak diubah (play game).")
         else: raise e
     except Exception as e:
         await send_admin_log(context, e, update, "play_game")
-        await query.edit_message_text("❌ Maaf, terjadi kesalahan pada game.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
 
 async def generate_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     try:
         await query.answer()
-        length = 16
         chars = string.ascii_letters + string.digits + string.punctuation
-        password = ''.join(random.choice(chars) for _ in range(length))
-        text = (f"🔑 <b>Password Baru Dibuat</b>\n\nIni adalah password Anda yang aman (16 karakter):\n\n"
+        password = ''.join(random.choice(chars) for _ in range(16))
+        text = (f"🔑 <b>Password Baru Dibuat</b>\n\nIni adalah password aman (16 karakter) Anda:\n\n"
                 f"<code>{safe_html(password)}</code>\n\n"
-                f"<i>ℹ️ Klik pada password untuk menyalinnya. Harap simpan di tempat yang aman.</i>")
+                f"<i>ℹ️ Klik password untuk menyalin. Segera simpan di tempat aman.</i>")
         
-        # Hapus pesan prompt lama dan kirim hasil
         await query.edit_message_text(text, parse_mode=ParseMode.HTML)
-        
-        # Kirim navigasi di pesan terpisah
-        keyboard = [[InlineKeyboardButton("🔄 Buat Lagi", callback_data="gen_password")], [InlineKeyboardButton("⬅️ Kembali ke Tools", callback_data="main_tools")]]
+        keyboard = [[InlineKeyboardButton("🔄 Buat Password Lagi", callback_data="gen_password")], [InlineKeyboardButton("⬅️ Kembali ke Tools", callback_data="main_tools")]]
         await query.message.reply_text("Pilih aksi selanjutnya:", reply_markup=InlineKeyboardMarkup(keyboard))
-
     except BadRequest as e:
          if "Message is not modified" not in str(e): raise e
     except Exception as e:
@@ -953,12 +908,12 @@ def main():
     bot_application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
     print(f"======================================================")
-    print(f"🚀 Bot Pulsa Net (v18.2 - Persistent History)")
+    print(f"🚀 Bot Pulsa Net (v18.3 - Professional UI)")
     print(f"======================================================")
     print("✅ Fitur Inti: AKTIF")
     print("✅ Tools Digital: Base64, IP Info, WHOIS, QR, Kurs, Pass, Game")
     print("\n💡 Bot sedang berjalan. Tekan Ctrl+C untuk berhenti dengan aman.")
-    print("-" * 60)
+    print("—" * 60)
     bot_application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 if __name__ == "__main__":
