@@ -1,21 +1,16 @@
 # ============================================
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
-# Developer: frd099 (Diperbarui oleh Gemini)
-# Versi: 18.4 (Tools Pagination & UX Improvements)
+# Developer: frd099
+# Versi: 18.5 (Mobile UI Optimization)
 #
-# CHANGELOG v18.4 (Fitur Baru & Perbaikan):
-# - UPDATE (UX): Menambahkan paginasi (halaman) pada menu Tools Digital
-#   untuk tampilan yang lebih bersih dan tidak menumpuk.
+# CHANGELOG v18.5 (Fitur Baru & Perbaikan):
+# - UPDATE (UI/UX): Mengoptimalkan tampilan menu Tools Digital untuk perangkat
+#   mobile dengan mengubah layout tombol menjadi satu kolom. Tombol kini lebih
+#   besar, mudah dibaca, dan nyaman untuk ditekan.
+# - UPDATE (UX): Menambahkan paginasi (halaman) pada menu Tools Digital.
 # - UPDATE (UX): Setelah membersihkan chat, bot sekarang akan langsung
-#   menampilkan menu utama yang baru, memberikan kesan "reset" yang lebih baik.
-# - FIX (Stabilitas): Menambahkan penanganan error spesifik pada fungsi
-#   pembersihan chat. Bot sekarang tidak akan error jika pengguna keluar dari
-#   chat saat proses pembersihan sedang berlangsung.
-# - UPDATE (UI Major): Merombak total tampilan hasil dari semua tools (WHOIS, IP,
-#   Nomor, dll.) dengan layout yang lebih bersih, profesional, dan elegan.
-# - UPDATE (UI): Menyempurnakan teks dan separator di menu utama untuk
-#   tampilan yang lebih rapi.
+#   menampilkan menu utama yang baru.
 # ============================================
 
 import os
@@ -80,8 +75,8 @@ warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
 # ⚙️ KONFIGURASI & VARIABEL GLOBAL
 # ==============================================================================
 ADMIN_ID = os.environ.get("TELEGRAM_ADMIN_ID")
-MAX_MESSAGES_TO_TRACK = 100 # Ditingkatkan untuk melacak lebih banyak pesan
-MAX_MESSAGES_TO_DELETE_PER_BATCH = 50 # Ditingkatkan untuk menghapus lebih banyak pesan sekaligus
+MAX_MESSAGES_TO_TRACK = 100
+MAX_MESSAGES_TO_DELETE_PER_BATCH = 50
 BOT_START_TIME = datetime.now()
 
 # --- Graceful Shutdown ---
@@ -367,10 +362,8 @@ async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         context.user_data['messages_to_clear'] = []
         
-        # --- PERUBAHAN DIMULAI ---
         # Langsung panggil fungsi start untuk menampilkan menu utama yang baru
         await start(update, context)
-        # --- PERUBAHAN SELESAI ---
             
     except Exception as e:
         if not isinstance(e, (BadRequest, Forbidden)):
@@ -587,8 +580,6 @@ async def show_bantuan(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_admin_log(context, e, update, "show_bantuan")
         await query.edit_message_text("❌ Maaf, terjadi kesalahan.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
 
-# --- PERUBAHAN DIMULAI ---
-# Fungsi untuk menampilkan menu Tools dengan paginasi
 async def show_tools_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -604,7 +595,8 @@ async def show_tools_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         InlineKeyboardButton("🕹️ Mini Game", callback_data="main_game")
     ]
     
-    tools_per_page = 6
+    # Mengatur jumlah tombol per halaman agar tidak terlalu panjang di mobile
+    tools_per_page = 5
     page = 0
 
     # Cek apakah ini adalah callback untuk navigasi halaman
@@ -617,8 +609,8 @@ async def show_tools_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Ambil tools untuk halaman saat ini
     keyboard_tools = all_tools[start_index:end_index]
     
-    # Bentuk keyboard dalam format 2 kolom
-    keyboard = [keyboard_tools[i:i+2] for i in range(0, len(keyboard_tools), 2)]
+    # Mengubah layout menjadi satu kolom. Setiap tombol dibungkus dalam list-nya sendiri.
+    keyboard = [[button] for button in keyboard_tools]
 
     # Buat tombol navigasi
     navigation_row = []
@@ -642,7 +634,6 @@ async def show_tools_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await send_admin_log(context, e, update, "show_tools_menu")
         await query.edit_message_text("❌ Maaf, terjadi kesalahan.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-# --- PERUBAHAN SELESAI ---
 
 async def prompt_for_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -987,11 +978,9 @@ def main():
     bot_application.add_handler(CallbackQueryHandler(show_bantuan, pattern='^main_bantuan$'))
     bot_application.add_handler(CallbackQueryHandler(show_operator_menu, pattern=r'^main_(paket|pulsa)$'))
     
-    # --- PERUBAHAN DIMULAI ---
     # Handler untuk menu tools utama dan navigasi halaman
     bot_application.add_handler(CallbackQueryHandler(show_tools_menu, pattern='^main_tools$'))
     bot_application.add_handler(CallbackQueryHandler(show_tools_menu, pattern=r'^tools_page_\d+$'))
-    # --- PERUBAHAN SELESAI ---
     
     bot_application.add_handler(CallbackQueryHandler(show_xl_paket_submenu, pattern=r'^list_paket_xl$'))
     bot_application.add_handler(CallbackQueryHandler(show_product_list, pattern=r'^list_(paket|pulsa)_.+$'))
@@ -1003,7 +992,7 @@ def main():
     bot_application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
     print(f"======================================================")
-    print(f"🚀 Bot Pulsa Net (v18.4 - Tools Pagination & UX Improvements)")
+    print(f"🚀 Bot Pulsa Net (v18.5 - Mobile UI Optimization)")
     print(f"======================================================")
     print("✅ Fitur Inti: AKTIF")
     print("✅ Tools Digital: Base64, IP Info, WHOIS, QR, Kurs, Pass, Game")
