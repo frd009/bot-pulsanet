@@ -2,17 +2,20 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
 # Developer: frd099 (Diperbarui oleh Gemini)
-# Versi: 18.3 (Professional UI & Stability Fix)
+# Versi: 18.4 (Tools Pagination & UX Improvements)
 #
-# CHANGELOG v18.3 (Fitur Baru & Perbaikan):
+# CHANGELOG v18.4 (Fitur Baru & Perbaikan):
+# - UPDATE (UX): Menambahkan paginasi (halaman) pada menu Tools Digital
+#   untuk tampilan yang lebih bersih dan tidak menumpuk.
+# - UPDATE (UX): Setelah membersihkan chat, bot sekarang akan langsung
+#   menampilkan menu utama yang baru, memberikan kesan "reset" yang lebih baik.
+# - FIX (Stabilitas): Menambahkan penanganan error spesifik pada fungsi
+#   pembersihan chat. Bot sekarang tidak akan error jika pengguna keluar dari
+#   chat saat proses pembersihan sedang berlangsung.
 # - UPDATE (UI Major): Merombak total tampilan hasil dari semua tools (WHOIS, IP,
 #   Nomor, dll.) dengan layout yang lebih bersih, profesional, dan elegan.
 # - UPDATE (UI): Menyempurnakan teks dan separator di menu utama untuk
 #   tampilan yang lebih rapi.
-# - FIX (Stabilitas): Menambahkan penanganan error spesifik pada fungsi
-#   pembersihan chat. Bot sekarang tidak akan error jika pengguna keluar dari
-#   chat saat proses pembersihan sedang berlangsung.
-# - UPDATE (UX): Peningkatan konsistensi teks pada tombol-tombol navigasi.
 # ============================================
 
 import os
@@ -77,8 +80,8 @@ warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
 # ⚙️ KONFIGURASI & VARIABEL GLOBAL
 # ==============================================================================
 ADMIN_ID = os.environ.get("TELEGRAM_ADMIN_ID")
-MAX_MESSAGES_TO_TRACK = 50
-MAX_MESSAGES_TO_DELETE_PER_BATCH = 25
+MAX_MESSAGES_TO_TRACK = 100 # Ditingkatkan untuk melacak lebih banyak pesan
+MAX_MESSAGES_TO_DELETE_PER_BATCH = 50 # Ditingkatkan untuk menghapus lebih banyak pesan sekaligus
 BOT_START_TIME = datetime.now()
 
 # --- Graceful Shutdown ---
@@ -332,49 +335,78 @@ async def track_message(context: ContextTypes.DEFAULT_TYPE, message):
         context.user_data['messages_to_clear'].append(message.message_id)
 
 async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id; loading_msg = None
+    chat_id = update.effective_chat.id
+    loading_msg = None
+    query = update.callback_query
     try:
-        if update.callback_query:
-            await update.callback_query.answer("🧹 Memulai bersih-bersih...")
-            await asyncio.sleep(0.1)
-            try: await context.bot.delete_message(chat_id=chat_id, message_id=update.callback_query.message.message_id)
-            except Exception: pass
-        
-        loading_msg = await context.bot.send_message(chat_id=chat_id, text="🔄 <b>Menghapus jejak pesan...</b> Mohon tunggu.", parse_mode=ParseMode.HTML)
-        await asyncio.sleep(0.5) # Jeda singkat untuk stabilitas
+        if query:
+            await query.answer("🧹 Memulai bersih-bersih...")
+            # Hapus pesan menu sebelumnya
+            try:
+                await query.delete_message()
+            except Exception:
+                pass
 
-        messages_to_clear = list(set(context.user_data.get('messages_to_clear', [])))[-MAX_MESSAGES_TO_DELETE_PER_BATCH:]
-        delete_tasks = [context.bot.delete_message(chat_id=chat_id, message_id=msg_id) for msg_id in messages_to_clear if msg_id != loading_msg.message_id]
-        results = await asyncio.gather(*delete_tasks, return_exceptions=True)
-        success_count = sum(1 for r in results if not isinstance(r, Exception))
+        loading_msg = await context.bot.send_message(chat_id=chat_id, text="🔄 <b>Menghapus jejak pesan bot...</b> Mohon tunggu.", parse_mode=ParseMode.HTML)
         
-        try: await context.bot.delete_message(chat_id=chat_id, message_id=loading_msg.message_id)
-        except Exception: pass
+        messages_to_clear = list(set(context.user_data.get('messages_to_clear', [])))
         
+        # Tambahkan pesan loading ke daftar hapus juga
+        if loading_msg:
+            messages_to_clear.append(loading_msg.message_id)
+        
+        # Sortir pesan dari yang terlama ke terbaru untuk menghindari masalah
+        messages_to_clear.sort()
+
+        # Proses penghapusan secara batch
+        for i in range(0, len(messages_to_clear), MAX_MESSAGES_TO_DELETE_PER_BATCH):
+            batch = messages_to_clear[i:i+MAX_MESSAGES_TO_DELETE_PER_BATCH]
+            delete_tasks = [context.bot.delete_message(chat_id=chat_id, message_id=msg_id) for msg_id in batch]
+            await asyncio.gather(*delete_tasks, return_exceptions=True)
+            await asyncio.sleep(1) # Jeda untuk menghindari rate limit
+
         context.user_data['messages_to_clear'] = []
-        confirmation_text = f"✅ <b>Selesai!</b>\n\nBerhasil menghapus <b>{success_count}</b> pesan dari sesi ini. Semuanya kembali bersih!"
         
-        # FIX: Bungkus pengiriman pesan akhir untuk menangani user yang sudah keluar
-        try:
-            sent_msg = await context.bot.send_message(chat_id=chat_id, text=confirmation_text, reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
-            await track_message(context, sent_msg)
-        except (BadRequest, Forbidden) as e:
-            # Jika user memblokir bot atau keluar dari chat, jangan error.
-            logger.warning(f"Gagal mengirim konfirmasi hapus ke chat {chat_id}. Mungkin user sudah keluar. Error: {e}")
+        # --- PERUBAHAN DIMULAI ---
+        # Langsung panggil fungsi start untuk menampilkan menu utama yang baru
+        await start(update, context)
+        # --- PERUBAHAN SELESAI ---
             
     except Exception as e:
-        # Hanya log error tak terduga
         if not isinstance(e, (BadRequest, Forbidden)):
+            logger.error(f"Error di clear_history: {e}")
             await send_admin_log(context, e, update, "clear_history")
+        
+        # Jika terjadi error, coba hapus pesan loading jika ada
         try:
-            if loading_msg: await context.bot.delete_message(chat_id=chat_id, message_id=loading_msg.message_id)
-        except Exception: pass
+            if loading_msg:
+                await context.bot.delete_message(chat_id=chat_id, message_id=loading_msg.message_id)
+        except Exception:
+            pass
+        
+        # Jika gagal total, berikan pesan error dan tombol kembali
+        try:
+            error_msg = await context.bot.send_message(
+                chat_id=chat_id,
+                text="⚠️ Gagal membersihkan semua pesan. Mungkin beberapa pesan sudah terlalu lama. Silakan coba lagi nanti.",
+                reply_markup=keyboard_error_back,
+                parse_mode=ParseMode.HTML
+            )
+            await track_message(context, error_msg)
+        except (BadRequest, Forbidden) as final_e:
+            logger.warning(f"Gagal mengirim pesan error akhir di clear_history ke chat {chat_id}. Error: {final_e}")
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     try:
+        # Hapus state jika pengguna kembali ke menu utama
         context.user_data.pop('state', None)
-        if update.message and update.message.text == '/start': await track_message(context, update.message)
+        
+        if update.message and update.message.text == '/start':
+            # Jika ini adalah command /start, lacak pesannya untuk dihapus nanti
+            await track_message(context, update.message)
+            
         user = update.effective_user
         try:
             now, hour = datetime.now(ZoneInfo("Asia/Jakarta")), datetime.now(ZoneInfo("Asia/Jakarta")).hour
@@ -382,7 +414,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             elif 11 <= hour < 15: greeting, icon = "Selamat Siang", "🌤️"
             elif 15 <= hour < 18: greeting, icon = "Selamat Sore", "🌥️"
             else: greeting, icon = "Selamat Malam", "🌙"
-        except Exception as tz_error: logger.warning(f"⚠️ Gagal mendapatkan waktu Jakarta: {tz_error}."); greeting, icon = "Halo", "👋"
+        except Exception as tz_error:
+            logger.warning(f"⚠️ Gagal mendapatkan waktu Jakarta: {tz_error}.")
+            greeting, icon = "Halo", "👋"
 
         uptime_str = format_uptime(BOT_START_TIME)
         username_info = f"<code>@{user.username}</code>" if user.username else "<i>(tidak ada)</i>"
@@ -408,20 +442,29 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if update.callback_query:
             try:
+                # Jika berasal dari callback (misalnya setelah clear_history), edit pesan yang ada
                 await update.callback_query.edit_message_text(main_text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
                 await update.callback_query.answer()
             except BadRequest as e:
-                if "Message is not modified" in str(e): await update.callback_query.answer("Anda sudah di menu utama.")
-                else: raise e
+                if "Message is not modified" in str(e):
+                    await update.callback_query.answer("Anda sudah di menu utama.")
+                else:
+                    # Jika pesan tidak bisa diedit (misal sudah dihapus), kirim pesan baru
+                    sent_message = await context.bot.send_message(chat_id=chat_id, text=main_text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+                    await track_message(context, sent_message)
         else:
+            # Jika ini adalah /start command, kirim pesan baru
             sent_message = await context.bot.send_message(chat_id=chat_id, text=main_text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
             await track_message(context, sent_message)
+            
     except Exception as e:
         await send_admin_log(context, e, update, "start")
         try:
             error_msg = await context.bot.send_message(chat_id=chat_id, text="❌ Maaf, terjadi kesalahan saat memuat menu utama.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
             await track_message(context, error_msg)
-        except Exception as e_inner: logger.error(f"❌ Gagal mengirim pesan error di start: {e_inner}")
+        except Exception as e_inner:
+            logger.error(f"❌ Gagal mengirim pesan error di start: {e_inner}")
+
 
 async def show_operator_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -544,25 +587,62 @@ async def show_bantuan(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_admin_log(context, e, update, "show_bantuan")
         await query.edit_message_text("❌ Maaf, terjadi kesalahan.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
 
+# --- PERUBAHAN DIMULAI ---
+# Fungsi untuk menampilkan menu Tools dengan paginasi
 async def show_tools_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    await query.answer()
+
+    # Daftar semua tools yang tersedia
+    all_tools = [
+        InlineKeyboardButton("🔳 Buat QR Code", callback_data="ask_for_qr"),
+        InlineKeyboardButton("💱 Kalkulator Kurs", callback_data="ask_for_currency"),
+        InlineKeyboardButton("🌍 Cek Domain (WHOIS)", callback_data="ask_for_whois"),
+        InlineKeyboardButton("📍 Info IP Address", callback_data="ask_for_ip"),
+        InlineKeyboardButton("📦 Base64 Encode/Decode", callback_data="ask_for_base64"),
+        InlineKeyboardButton("🔑 Buat Password", callback_data="gen_password"),
+        InlineKeyboardButton("🕹️ Mini Game", callback_data="main_game")
+    ]
+    
+    tools_per_page = 6
+    page = 0
+
+    # Cek apakah ini adalah callback untuk navigasi halaman
+    if query.data.startswith("tools_page_"):
+        page = int(query.data.split('_')[2])
+
+    start_index = page * tools_per_page
+    end_index = start_index + tools_per_page
+    
+    # Ambil tools untuk halaman saat ini
+    keyboard_tools = all_tools[start_index:end_index]
+    
+    # Bentuk keyboard dalam format 2 kolom
+    keyboard = [keyboard_tools[i:i+2] for i in range(0, len(keyboard_tools), 2)]
+
+    # Buat tombol navigasi
+    navigation_row = []
+    if page > 0:
+        navigation_row.append(InlineKeyboardButton("◀️ Sebelumnya", callback_data=f"tools_page_{page-1}"))
+    if end_index < len(all_tools):
+        navigation_row.append(InlineKeyboardButton("Selanjutnya ▶️", callback_data=f"tools_page_{page+1}"))
+    
+    if navigation_row:
+        keyboard.append(navigation_row)
+        
+    keyboard.append([InlineKeyboardButton("⬅️ Kembali ke Menu Utama", callback_data="back_to_start")])
+
+    text = f"<b>🛠️ Tools Digital (Halaman {page + 1})</b>\n\nPilih salah satu alat bantu yang tersedia di bawah ini:"
+    
     try:
-        await query.answer()
-        text = "<b>🛠️ Tools Digital</b>\n\nPilih salah satu alat bantu yang tersedia di bawah ini:"
-        keyboard = [
-            [InlineKeyboardButton("🔳 Buat QR Code", callback_data="ask_for_qr"), InlineKeyboardButton("💱 Kalkulator Kurs", callback_data="ask_for_currency")],
-            [InlineKeyboardButton("🌍 Cek Domain (WHOIS)", callback_data="ask_for_whois"), InlineKeyboardButton("📍 Info IP Address", callback_data="ask_for_ip")],
-            [InlineKeyboardButton("📦 Base64 Encode/Decode", callback_data="ask_for_base64"), InlineKeyboardButton("🔑 Buat Password", callback_data="gen_password")],
-            [InlineKeyboardButton("🕹️ Mini Game", callback_data="main_game")],
-            [InlineKeyboardButton("⬅️ Kembali ke Menu Utama", callback_data="back_to_start")]
-        ]
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
     except BadRequest as e:
-        if "Message is not modified" in str(e): logger.info(f"Pesan {query.message.message_id} tidak diubah (tools menu).")
-        else: raise e
+        if "Message is not modified" not in str(e):
+            await send_admin_log(context, e, update, "show_tools_menu_pagination")
     except Exception as e:
         await send_admin_log(context, e, update, "show_tools_menu")
         await query.edit_message_text("❌ Maaf, terjadi kesalahan.", reply_markup=keyboard_error_back, parse_mode=ParseMode.HTML)
+# --- PERUBAHAN SELESAI ---
 
 async def prompt_for_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -768,9 +848,15 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         message_text = update.message.text
         phone_pattern = r'(\+?\d{1,3}[\s-]?\d[\d\s-]{7,14}\d)'
 
+        # Hapus pesan prompt "Kirimkan..." setelah user membalas
         if state and 'messages_to_clear' in context.user_data and context.user_data['messages_to_clear']:
-            try: await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=context.user_data['messages_to_clear'][-1])
-            except Exception: pass
+            # Ambil ID pesan terakhir yang merupakan prompt dari bot
+            last_bot_message_id = context.user_data['messages_to_clear'][-1]
+            try:
+                # Cek apakah pesan itu benar-benar ada sebelum dihapus
+                await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=last_bot_message_id)
+            except Exception:
+                pass # Abaikan jika gagal (misal sudah dihapus manual)
 
         if state == 'awaiting_number':
             context.user_data.pop('state', None)
@@ -867,11 +953,14 @@ async def generate_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"<code>{safe_html(password)}</code>\n\n"
                 f"<i>ℹ️ Klik password untuk menyalin. Segera simpan di tempat aman.</i>")
         
-        await query.edit_message_text(text, parse_mode=ParseMode.HTML)
         keyboard = [[InlineKeyboardButton("🔄 Buat Password Lagi", callback_data="gen_password")], [InlineKeyboardButton("⬅️ Kembali ke Tools", callback_data="main_tools")]]
-        await query.message.reply_text("Pilih aksi selanjutnya:", reply_markup=InlineKeyboardMarkup(keyboard))
+        
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+
     except BadRequest as e:
-         if "Message is not modified" not in str(e): raise e
+         if "Message is not modified" not in str(e): 
+            await query.edit_message_text(text, parse_mode=ParseMode.HTML)
+            await query.message.reply_text("Pilih aksi selanjutnya:", reply_markup=InlineKeyboardMarkup(keyboard))
     except Exception as e:
         await send_admin_log(context, e, update, "generate_password")
 
@@ -897,7 +986,13 @@ def main():
     bot_application.add_handler(CallbackQueryHandler(clear_history, pattern='^clear_history$'))
     bot_application.add_handler(CallbackQueryHandler(show_bantuan, pattern='^main_bantuan$'))
     bot_application.add_handler(CallbackQueryHandler(show_operator_menu, pattern=r'^main_(paket|pulsa)$'))
+    
+    # --- PERUBAHAN DIMULAI ---
+    # Handler untuk menu tools utama dan navigasi halaman
     bot_application.add_handler(CallbackQueryHandler(show_tools_menu, pattern='^main_tools$'))
+    bot_application.add_handler(CallbackQueryHandler(show_tools_menu, pattern=r'^tools_page_\d+$'))
+    # --- PERUBAHAN SELESAI ---
+    
     bot_application.add_handler(CallbackQueryHandler(show_xl_paket_submenu, pattern=r'^list_paket_xl$'))
     bot_application.add_handler(CallbackQueryHandler(show_product_list, pattern=r'^list_(paket|pulsa)_.+$'))
     bot_application.add_handler(CallbackQueryHandler(show_package_details, pattern=r'^pkg_\d+_[a-z0-9_]+$'))
@@ -908,7 +1003,7 @@ def main():
     bot_application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
     print(f"======================================================")
-    print(f"🚀 Bot Pulsa Net (v18.3 - Professional UI)")
+    print(f"🚀 Bot Pulsa Net (v18.4 - Tools Pagination & UX Improvements)")
     print(f"======================================================")
     print("✅ Fitur Inti: AKTIF")
     print("✅ Tools Digital: Base64, IP Info, WHOIS, QR, Kurs, Pass, Game")
