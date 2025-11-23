@@ -1,10 +1,42 @@
-python-telegram-bot[job-queue]>=20.0
-requests
-httpx
-qrcode
-pillow
-phonenumbers
-pycountry
-python-whois
-cachetools
-python-dotenv
+# ============================================
+# 🤖 Bot Pulsa Net
+# Requirements File
+# ============================================
+
+# CORE TELEGRAM BOT
+python-telegram-bot==20.7
+httpx==0.25.2
+
+# IMAGE & QR PROCESSING
+qrcode[pil]==7.4.2
+Pillow==10.1.0
+
+# PHONE NUMBER PROCESSING
+phonenumbers==8.13.22
+pycountry==23.12.11
+
+# WEB & NETWORK TOOLS
+beautifulsoup4==4.12.2
+whois==0.9.7
+requests==2.31.0
+
+# SYSTEM & UTILITIES
+psutil==5.9.6
+backports.zoneinfo==0.2.1
+tzdata==2023.4
+
+# ASYNC & PERFORMANCE
+aiohttp==3.9.1
+asyncio-throttle==1.0.2
+
+# SECURITY & ENCODING
+cryptography==41.0.8
+
+# DATE/TIME HANDLING
+python-dateutil==2.8.2
+pytz==2023.3.post1
+
+# ADDITIONAL UTILITIES
+urllib3==2.1.0
+charset-normalizer==3.3.2
+idna==3.6
