@@ -1,8 +1,8 @@
 # ============================================
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
-# Developer: frd099
-# Versi: 19.0 (Complete Power Mode)
+# Developer: frd099 & AI Refactor
+# Versi: 19.0 (Complete Power Mode - FIXED)
 # ============================================
 
 import os
@@ -23,12 +23,12 @@ import json
 import psutil
 from datetime import datetime
 
-# FIX 1: Import Error - ZoneInfo
+# FIX 1: Import Error - ZoneInfo (Fixed Logic)
 try:
     from zoneinfo import ZoneInfo
 except ImportError:
-    import pytz
-    ZoneInfo = pytz.timezone
+    try:
+        from backports.zoneinfo import ZoneInfo
     except ImportError:
         print("❌ KRITIS: 'zoneinfo' tidak ditemukan. Install: pip install backports.zoneinfo")
         sys.exit(1)
@@ -46,7 +46,7 @@ try:
     from bs4 import BeautifulSoup
 except ImportError as e:
     print(f"❌ Library missing: {e}")
-    print("📦 Install: pip install qrcode[pil] pillow phonenumbers pycountry python-whois beautifulsoup4 psutil")
+    print("📦 Install: pip install -r requirements.txt")
     sys.exit(1)
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -231,8 +231,8 @@ def create_general_description(package_key):
 def create_akrab_description(package_key):
     info = ALL_PACKAGES_DATA.get(package_key, {}); quota_info = AKRAB_QUOTA_DETAILS.get(package_key)
     description = create_header(info) + "\n" + ("<i>Paket keluarga resmi dari XL dengan kuota besar yang bisa dibagi-pakai.</i>\n\n"
-                    "✅ <b>Jenis Paket:</b> Resmi (OFFICIAL)\n" "🛡️ <b>Jaminan:</b> Garansi Penuh\n"
-                    "🌐 <b>Kompatibilitas:</b> XL / AXIS / LIVEON\n" "📅 <b>Masa Aktif:</b> ±28 hari (sesuai ketentuan XL)\n\n")
+                        "✅ <b>Jenis Paket:</b> Resmi (OFFICIAL)\n" "🛡️ <b>Jaminan:</b> Garansi Penuh\n"
+                        "🌐 <b>Kompatibilitas:</b> XL / AXIS / LIVEON\n" "📅 <b>Masa Aktif:</b> ±28 hari (sesuai ketentuan XL)\n\n")
     if quota_info:
         description += ("💾 <b>Estimasi Total Kuota (berdasarkan zona):</b>\n"
                           f"  - <b>Area 1:</b> {quota_info.get('1', 'N/A')}\n" f"  - <b>Area 2:</b> {quota_info.get('2', 'N/A')}\n"
@@ -330,8 +330,8 @@ class ZetaPowerFeatures:
                 desc_content = description["content"] if description else "No Description"
                 
                 return (f"🌐 <b>Website Info</b>\n\n"
-                       f"📄 Title: {safe_html(title)}\n"
-                       f"📝 Description: {safe_html(desc_content[:200])}...")
+                        f"📄 Title: {safe_html(title)}\n"
+                        f"📝 Description: {safe_html(desc_content[:200])}...")
         except Exception as e:
             return f"❌ Gagal scraping website: {e}"
     
@@ -776,8 +776,8 @@ async def handle_zeta_text_messages(update: Update, context: ContextTypes.DEFAUL
             short_url = await ZetaPowerFeatures.shorten_url(message_text)
             
             result_text = (f"🔗 <b>URL Shortener</b>\n\n"
-                          f"📏 Original: <code>{safe_html(message_text)}</code>\n"
-                          f"📎 Shortened: <code>{short_url}</code>")
+                           f"📏 Original: <code>{safe_html(message_text)}</code>\n"
+                           f"📎 Shortened: <code>{short_url}</code>")
             
             await update.message.reply_text(result_text, parse_mode=ParseMode.HTML)
             keyboard = [
@@ -932,9 +932,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         username_info = f"<code>@{user.username}</code>" if user.username else "<i>(tidak ada)</i>"
         
         main_text = (f"{icon} <b>{greeting}, {user.first_name}!</b>\n\n"
-                     "Selamat datang di <b>Pulsa Net</b>.\nPlatform terpadu untuk semua kebutuhan digital Anda.\n\n"
-                     "Silakan pilih layanan di bawah untuk memulai.\n"
-                     "— — — — — — — — — — — —\n"
+                     f"Selamat datang di <b>Pulsa Net</b>.\nPlatform terpadu untuk semua kebutuhan digital Anda.\n\n"
+                     f"Silakan pilih layanan di bawah untuk memulai.\n"
+                     f"— — — — — — — — — — — —\n"
                      f"👤 <b>Informasi Sesi</b>\n"
                      f"  ├─ Username: {username_info}\n"
                      f"  ├─ User ID: <code>{user.id}</code>\n"
@@ -1359,13 +1359,12 @@ async def handle_base64(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await track_message(context, sent_msg2)
 
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle text messages"""
+    """Handle text messages (Combined Handler)"""
     try:
         await track_message(context, update.message)
         state = context.user_data.get('state')
         message_text = update.message.text
-        phone_pattern = r'(\+?\d{1,3}[\s-]?\d[\d\s-]{7,14}\d)'
-
+        
         if state and 'messages_to_clear' in context.user_data and context.user_data['messages_to_clear']:
             last_bot_message_id = context.user_data['messages_to_clear'][-1]
             try:
@@ -1373,8 +1372,15 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             except Exception:
                 pass
 
+        # --- ZETA FEATURE CHECK ---
+        if state in ['awaiting_stock', 'awaiting_scrape', 'awaiting_shorten', 'awaiting_breach', 'awaiting_crypto_custom'] or ('current_game' in context.user_data and context.user_data['current_game']['type'] == 'number_guess'):
+             await handle_zeta_text_messages(update, context)
+             return
+
+        # --- STANDARD TOOLS CHECK ---
         if state == 'awaiting_number':
             context.user_data.pop('state', None)
+            phone_pattern = r'(\+?\d{1,3}[\s-]?\d[\d\s-]{7,14}\d)'
             numbers = re.findall(phone_pattern, message_text)
             response_text = "\n\n".join([get_provider_info_global(num.replace(" ", "").replace("-", "")) for num in numbers]) if numbers else "❌ Format nomor tidak valid."
             sent_msg = await update.message.reply_text(response_text, parse_mode=ParseMode.HTML)
@@ -1408,6 +1414,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         elif state == 'awaiting_base64': context.user_data.pop('state', None); await handle_base64(update, context); return
         elif state == 'awaiting_currency': context.user_data.pop('state', None); await handle_currency_conversion(update, context); return
 
+        phone_pattern = r'(\+?\d{1,3}[\s-]?\d[\d\s-]{7,14}\d)'
         if not state and (numbers := re.findall(phone_pattern, message_text)) and len(numbers) <= 3:
             responses = [get_provider_info_global(num.replace(" ", "").replace("-", "")) for num in numbers]
             sent_msg = await update.message.reply_text(
@@ -1532,9 +1539,8 @@ def main():
     bot_application.add_handler(CallbackQueryHandler(handle_trivia_answer, pattern='^trivia_'))
     bot_application.add_handler(CallbackQueryHandler(prompt_for_action, pattern='^zeta_crypto_custom$'))
     
-    # Message handlers
+    # Message handlers - FIXED: Only one unified text handler
     bot_application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
-    bot_application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_zeta_text_messages))
 
     print(f"======================================================")
     print(f"🚀 Bot Pulsa Net - ZETA POWER EDITION v19.0")
@@ -1555,4 +1561,3 @@ if __name__ == "__main__":
         logger.critical(f"❌ FATAL ERROR di main loop: {e}")
         logger.critical(traceback.format_exc())
         sys.exit(1)
-
