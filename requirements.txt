@@ -7,4 +7,4 @@ pycountry==23.12.11
 beautifulsoup4==4.12.2
 whois==0.9.7
 psutil==5.9.6
-backports.zoneinfo==0.2.1
+tzdata==2023.4
