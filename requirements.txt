@@ -1,6 +1,10 @@
-python-telegram-bot
-httpx[http2]
-qrcode[pil]
+python-telegram-bot[job-queue]>=20.0
+requests
+httpx
+qrcode
+pillow
 phonenumbers
 pycountry
 python-whois
+cachetools
+python-dotenv
