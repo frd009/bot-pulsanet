@@ -1,10 +1,11 @@
-python-telegram-bot==20.7
-httpx==0.25.2
-qrcode[pil]==7.4.2
-Pillow==10.1.0
-phonenumbers==8.13.22
-pycountry==23.12.11
-beautifulsoup4==4.12.2
-whois==0.9.7
-psutil==5.9.6
-tzdata==2023.4
+python-telegram-bot[job-queue]>=20.0
+requests
+httpx
+qrcode
+pillow
+phonenumbers
+pycountry
+python-whois
+beautifulsoup4
+psutil
+backports.zoneinfo; python_version<"3.9"
