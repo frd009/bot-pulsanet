@@ -27,8 +27,8 @@ from datetime import datetime
 try:
     from zoneinfo import ZoneInfo
 except ImportError:
-    try:
-        from backports.zoneinfo import ZoneInfo
+    import pytz
+    ZoneInfo = pytz.timezone
     except ImportError:
         print("❌ KRITIS: 'zoneinfo' tidak ditemukan. Install: pip install backports.zoneinfo")
         sys.exit(1)
@@ -1555,3 +1555,4 @@ if __name__ == "__main__":
         logger.critical(f"❌ FATAL ERROR di main loop: {e}")
         logger.critical(traceback.format_exc())
         sys.exit(1)
+
