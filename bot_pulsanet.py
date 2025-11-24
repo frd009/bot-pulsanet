@@ -1,8 +1,8 @@
 # ============================================
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
-# Developer: frd099 & AI Refactor
-# Versi: 19.0 (Complete Power Mode - FIXED)
+# Developer: frd099
+# Versi: 19.1 (Zeta Tracking & No-Auto Delete Fixed)
 # ============================================
 
 import os
@@ -753,23 +753,29 @@ async def handle_zeta_text_messages(update: Update, context: ContextTypes.DEFAUL
             context.user_data.pop('state', None)
             stock_info = await ZetaPowerFeatures.get_stock_price(message_text.upper())
             
-            await update.message.reply_text(stock_info, parse_mode=ParseMode.HTML)
+            msg1 = await update.message.reply_text(stock_info, parse_mode=ParseMode.HTML)
+            await track_message(context, msg1)
+            
             keyboard = [
                 [InlineKeyboardButton("📊 Cek Saham Lain", callback_data="zeta_stock")],
                 [InlineKeyboardButton("⬅️ Zeta Power", callback_data="zeta_power")]
             ]
-            await update.message.reply_text("Pilih aksi selanjutnya:", reply_markup=InlineKeyboardMarkup(keyboard))
+            msg2 = await update.message.reply_text("Pilih aksi selanjutnya:", reply_markup=InlineKeyboardMarkup(keyboard))
+            await track_message(context, msg2)
             
         elif state == 'awaiting_scrape':
             context.user_data.pop('state', None)
             scrape_info = await ZetaPowerFeatures.web_scrape(message_text)
             
-            await update.message.reply_text(scrape_info, parse_mode=ParseMode.HTML)
+            msg1 = await update.message.reply_text(scrape_info, parse_mode=ParseMode.HTML)
+            await track_message(context, msg1)
+            
             keyboard = [
                 [InlineKeyboardButton("🌐 Scrape Lagi", callback_data="zeta_scrape")],
                 [InlineKeyboardButton("⬅️ Zeta Power", callback_data="zeta_power")]
             ]
-            await update.message.reply_text("Pilih aksi selanjutnya:", reply_markup=InlineKeyboardMarkup(keyboard))
+            msg2 = await update.message.reply_text("Pilih aksi selanjutnya:", reply_markup=InlineKeyboardMarkup(keyboard))
+            await track_message(context, msg2)
             
         elif state == 'awaiting_shorten':
             context.user_data.pop('state', None)
@@ -779,34 +785,43 @@ async def handle_zeta_text_messages(update: Update, context: ContextTypes.DEFAUL
                            f"📏 Original: <code>{safe_html(message_text)}</code>\n"
                            f"📎 Shortened: <code>{short_url}</code>")
             
-            await update.message.reply_text(result_text, parse_mode=ParseMode.HTML)
+            msg1 = await update.message.reply_text(result_text, parse_mode=ParseMode.HTML)
+            await track_message(context, msg1)
+            
             keyboard = [
                 [InlineKeyboardButton("🔗 Shorten Lagi", callback_data="zeta_shorten")],
                 [InlineKeyboardButton("⬅️ Zeta Power", callback_data="zeta_power")]
             ]
-            await update.message.reply_text("Pilih aksi selanjutnya:", reply_markup=InlineKeyboardMarkup(keyboard))
+            msg2 = await update.message.reply_text("Pilih aksi selanjutnya:", reply_markup=InlineKeyboardMarkup(keyboard))
+            await track_message(context, msg2)
             
         elif state == 'awaiting_breach':
             context.user_data.pop('state', None)
             breach_info = await ZetaPowerFeatures.check_data_breach(message_text)
             
-            await update.message.reply_text(breach_info, parse_mode=ParseMode.HTML)
+            msg1 = await update.message.reply_text(breach_info, parse_mode=ParseMode.HTML)
+            await track_message(context, msg1)
+            
             keyboard = [
                 [InlineKeyboardButton("🔒 Cek Email Lain", callback_data="zeta_breach")],
                 [InlineKeyboardButton("⬅️ Zeta Power", callback_data="zeta_power")]
             ]
-            await update.message.reply_text("Pilih aksi selanjutnya:", reply_markup=InlineKeyboardMarkup(keyboard))
+            msg2 = await update.message.reply_text("Pilih aksi selanjutnya:", reply_markup=InlineKeyboardMarkup(keyboard))
+            await track_message(context, msg2)
             
         elif state == 'awaiting_crypto_custom':
             context.user_data.pop('state', None)
             crypto_info = await ZetaPowerFeatures.get_crypto_price(message_text.lower())
             
-            await update.message.reply_text(crypto_info, parse_mode=ParseMode.HTML)
+            msg1 = await update.message.reply_text(crypto_info, parse_mode=ParseMode.HTML)
+            await track_message(context, msg1)
+            
             keyboard = [
                 [InlineKeyboardButton("💰 Crypto Lain", callback_data="zeta_crypto")],
                 [InlineKeyboardButton("⬅️ Zeta Power", callback_data="zeta_power")]
             ]
-            await update.message.reply_text("Pilih aksi selanjutnya:", reply_markup=InlineKeyboardMarkup(keyboard))
+            msg2 = await update.message.reply_text("Pilih aksi selanjutnya:", reply_markup=InlineKeyboardMarkup(keyboard))
+            await track_message(context, msg2)
             
         # Handle number guessing game
         elif 'current_game' in context.user_data and context.user_data['current_game']['type'] == 'number_guess':
@@ -843,10 +858,12 @@ async def handle_zeta_text_messages(update: Update, context: ContextTypes.DEFAUL
                         [InlineKeyboardButton("⬅️ Game Lain", callback_data="zeta_games")]
                     ]
                 
-                await update.message.reply_text(result_text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(keyboard))
+                msg1 = await update.message.reply_text(result_text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(keyboard))
+                await track_message(context, msg1)
                 
             except ValueError:
-                await update.message.reply_text("❌ Masukkan angka yang valid!")
+                msg1 = await update.message.reply_text("❌ Masukkan angka yang valid!")
+                await track_message(context, msg1)
                 
     except Exception as e:
         await send_admin_log(context, e, update, "handle_zeta_text_messages")
@@ -1365,12 +1382,16 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         state = context.user_data.get('state')
         message_text = update.message.text
         
-        if state and 'messages_to_clear' in context.user_data and context.user_data['messages_to_clear']:
-            last_bot_message_id = context.user_data['messages_to_clear'][-1]
-            try:
-                await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=last_bot_message_id)
-            except Exception:
-                pass
+        # --- NO AUTO DELETE (PERMINTAAN USER) ---
+        # Kode di bawah ini sebelumnya menghapus pesan bot terakhir saat user mengetik
+        # Sekarang dinonaktifkan agar pesan tetap ada sampai tombol 'Bersihkan Chat' ditekan.
+        
+        # if state and 'messages_to_clear' in context.user_data and context.user_data['messages_to_clear']:
+        #     last_bot_message_id = context.user_data['messages_to_clear'][-1]
+        #     try:
+        #         await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=last_bot_message_id)
+        #     except Exception:
+        #         pass
 
         # --- ZETA FEATURE CHECK ---
         if state in ['awaiting_stock', 'awaiting_scrape', 'awaiting_shorten', 'awaiting_breach', 'awaiting_crypto_custom'] or ('current_game' in context.user_data and context.user_data['current_game']['type'] == 'number_guess'):
@@ -1543,7 +1564,7 @@ def main():
     bot_application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
     print(f"======================================================")
-    print(f"🚀 Bot Pulsa Net - ZETA POWER EDITION v19.0")
+    print(f"🚀 Bot Pulsa Net - ZETA POWER EDITION v19.1")
     print(f"======================================================")
     print("✅ Fitur Inti: AKTIF")
     print("✅ Zeta Power: CRYPTO, STOCKS, WEB SCRAPE, GAMES, SYSTEM MONITOR")
