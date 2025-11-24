@@ -2,7 +2,7 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
 # Developer: frd099
-# Versi: 19.1 (Zeta Tracking & No-Auto Delete Fixed)
+# Versi: 19.2 (Increased History Buffer)
 # ============================================
 
 import os
@@ -68,7 +68,8 @@ warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
 # ⚙️ KONFIGURASI & VARIABEL GLOBAL ZETA
 # ==============================================================================
 ADMIN_ID = os.environ.get("TELEGRAM_ADMIN_ID")
-MAX_MESSAGES_TO_TRACK = 150
+# UPDATED: Meningkatkan buffer history agar pesan lama Zeta tidak tertinggal saat dibersihkan
+MAX_MESSAGES_TO_TRACK = 500  
 MAX_MESSAGES_TO_DELETE_PER_BATCH = 50
 BOT_START_TIME = datetime.now()
 
@@ -525,6 +526,7 @@ async def show_zeta_power_menu(update: Update, context: ContextTypes.DEFAULT_TYP
     """Menu utama fitur Zeta Power"""
     query = update.callback_query
     await query.answer()
+    await track_message(context, query.message) # FIX: Track menu message
     
     keyboard = [
         [InlineKeyboardButton("💰 Crypto Prices", callback_data="zeta_crypto"),
@@ -547,6 +549,7 @@ async def handle_zeta_crypto(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Handler untuk cryptocurrency"""
     query = update.callback_query
     await query.answer()
+    await track_message(context, query.message) # FIX: Track menu message
     
     keyboard = [
         [InlineKeyboardButton("₿ Bitcoin", callback_data="crypto_bitcoin"),
@@ -564,6 +567,7 @@ async def handle_crypto_price(update: Update, context: ContextTypes.DEFAULT_TYPE
     """Get specific crypto price"""
     query = update.callback_query
     await query.answer()
+    await track_message(context, query.message) # FIX: Track menu message
     
     coin = query.data.split('_')[1]
     price_info = await ZetaPowerFeatures.get_crypto_price(coin)
@@ -580,6 +584,7 @@ async def handle_zeta_stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler untuk stock market"""
     query = update.callback_query
     await query.answer()
+    await track_message(context, query.message) # FIX: Track menu message
     
     context.user_data['state'] = 'awaiting_stock'
     
@@ -594,6 +599,7 @@ async def handle_zeta_scrape(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Handler untuk web scraping"""
     query = update.callback_query
     await query.answer()
+    await track_message(context, query.message) # FIX: Track menu message
     
     context.user_data['state'] = 'awaiting_scrape'
     
@@ -608,6 +614,7 @@ async def handle_zeta_shorten(update: Update, context: ContextTypes.DEFAULT_TYPE
     """Handler untuk URL shortener"""
     query = update.callback_query
     await query.answer()
+    await track_message(context, query.message) # FIX: Track menu message
     
     context.user_data['state'] = 'awaiting_shorten'
     
@@ -622,6 +629,7 @@ async def handle_zeta_system(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Handler untuk system monitor"""
     query = update.callback_query
     await query.answer()
+    await track_message(context, query.message) # FIX: Track menu message
     
     stats = ZetaPowerFeatures.get_system_stats()
     
@@ -636,6 +644,7 @@ async def handle_zeta_breach(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Handler untuk data breach check"""
     query = update.callback_query
     await query.answer()
+    await track_message(context, query.message) # FIX: Track menu message
     
     context.user_data['state'] = 'awaiting_breach'
     
@@ -650,6 +659,7 @@ async def handle_zeta_games(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler untuk advanced games"""
     query = update.callback_query
     await query.answer()
+    await track_message(context, query.message) # FIX: Track menu message
     
     keyboard = [
         [InlineKeyboardButton("🎯 Tebak Angka", callback_data="game_number"),
@@ -666,6 +676,7 @@ async def handle_advanced_games(update: Update, context: ContextTypes.DEFAULT_TY
     """Handler untuk game-game advanced"""
     query = update.callback_query
     await query.answer()
+    await track_message(context, query.message) # FIX: Track menu message
     
     game_type = query.data.split('_')[1]
     
@@ -714,6 +725,7 @@ async def handle_trivia_answer(update: Update, context: ContextTypes.DEFAULT_TYP
     """Handle trivia answers"""
     query = update.callback_query
     await query.answer()
+    await track_message(context, query.message) # FIX: Track menu message
     
     answer_index = int(query.data.split('_')[1])
     trivia_data = context.user_data.get('current_trivia', {})
@@ -867,6 +879,12 @@ async def handle_zeta_text_messages(update: Update, context: ContextTypes.DEFAUL
                 
     except Exception as e:
         await send_admin_log(context, e, update, "handle_zeta_text_messages")
+        # ADDED: Notify user and track message even on error
+        try:
+            error_msg = await update.message.reply_text("❌ Terjadi kesalahan saat memproses data Zeta.")
+            await track_message(context, error_msg)
+        except:
+            pass
 
 # ==============================================================================
 # 🏗️ FUNGSI-FUNGSI UTAMA BOT (EXISTING)
@@ -975,9 +993,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 await update.callback_query.edit_message_text(main_text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
                 await update.callback_query.answer()
+                await track_message(context, update.callback_query.message) # FIX: Track start menu from callback
             except BadRequest as e:
                 if "Message is not modified" in str(e):
                     await update.callback_query.answer("Anda sudah di menu utama.")
+                    await track_message(context, update.callback_query.message) # FIX: Track even if not modified
                 else:
                     sent_message = await context.bot.send_message(chat_id=chat_id, text=main_text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
                     await track_message(context, sent_message)
@@ -998,6 +1018,7 @@ async def show_operator_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
     query = update.callback_query
     try:
         await query.answer()
+        await track_message(context, query.message) # FIX: Track menu message
         product_type_key = query.data.split('_')[1]
         product_type_name = "Paket Data 📡" if product_type_key == "paket" else "Pulsa Reguler 💵"
         operators = {"XL": "🔵", "Axis": "🟣", "Tri": "🔴", "Telkomsel": "🟠", "Indosat": "🟡", "By.U": "⚪"}
@@ -1021,6 +1042,7 @@ async def show_xl_paket_submenu(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     try:
         await query.answer()
+        await track_message(context, query.message) # FIX: Track menu message
         keyboard = [
             [InlineKeyboardButton("🤝 Akrab", callback_data="list_paket_xl_akrab"), InlineKeyboardButton("🥳 Bebas Puas", callback_data="list_paket_xl_bebaspuas")],
             [InlineKeyboardButton("⭕️ Circle", callback_data="list_paket_xl_circle"), InlineKeyboardButton("🚀 Paket Lainnya", callback_data="list_paket_xl_paket")],
@@ -1041,6 +1063,7 @@ async def show_product_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         data_parts = query.data.split('_')
         await query.answer()
+        await track_message(context, query.message) # FIX: Track menu message
         product_type_key = data_parts[1]
         category_key = data_parts[2]
         special_type_key = data_parts[3] if len(data_parts) > 3 else None
@@ -1084,6 +1107,7 @@ async def show_package_details(update: Update, context: ContextTypes.DEFAULT_TYP
     try:
         package_key = query.data
         await query.answer()
+        await track_message(context, query.message) # FIX: Track menu message
         info = ALL_PACKAGES_DATA.get(package_key, {})
         category = info.get('category', '').lower()
         p_type = info.get('type', '').lower()
@@ -1123,6 +1147,7 @@ async def show_tools_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show tools menu"""
     query = update.callback_query
     await query.answer()
+    await track_message(context, query.message) # FIX: Track menu message
 
     all_tools = [
         InlineKeyboardButton("🔳 Buat QR Code", callback_data="ask_for_qr"),
@@ -1175,6 +1200,7 @@ async def prompt_for_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     try:
         await query.answer()
+        await track_message(context, query.message) # FIX: Track menu message
         action = query.data
         text = ""
         back_button_callback = "main_tools"
@@ -1452,6 +1478,7 @@ async def show_game_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     try:
         await query.answer()
+        await track_message(context, query.message) # FIX: Track menu message
         keyboard = [
              [InlineKeyboardButton("Batu 🗿", callback_data="game_play_rock"),
               InlineKeyboardButton("Gunting ✂️", callback_data="game_play_scissors"),
@@ -1471,6 +1498,7 @@ async def play_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     try:
         await query.answer()
+        await track_message(context, query.message) # FIX: Track menu message
         user_choice = query.data.split('_')[2]
         bot_choice = random.choice(['rock', 'scissors', 'paper'])
         emoji = {'rock': '🗿', 'scissors': '✂️', 'paper': '📄'}
@@ -1493,6 +1521,7 @@ async def generate_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     try:
         await query.answer()
+        await track_message(context, query.message) # FIX: Track menu message
         chars = string.ascii_letters + string.digits + string.punctuation
         password = ''.join(random.choice(chars) for _ in range(16))
         text = (f"🔑 <b>Password Baru Dibuat</b>\n\nIni adalah password aman (16 karakter) Anda:\n\n"
@@ -1564,7 +1593,7 @@ def main():
     bot_application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
     print(f"======================================================")
-    print(f"🚀 Bot Pulsa Net - ZETA POWER EDITION v19.1")
+    print(f"🚀 Bot Pulsa Net - ZETA POWER EDITION v19.2")
     print(f"======================================================")
     print("✅ Fitur Inti: AKTIF")
     print("✅ Zeta Power: CRYPTO, STOCKS, WEB SCRAPE, GAMES, SYSTEM MONITOR")
