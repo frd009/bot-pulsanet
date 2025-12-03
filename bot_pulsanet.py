@@ -2,7 +2,7 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
 # Developer: frd099
-# Versi: 19.2 (Increased History Buffer)
+# Versi: 19.3 (User Stats & Natural UI)
 # ============================================
 
 import os
@@ -68,10 +68,40 @@ warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
 # ⚙️ KONFIGURASI & VARIABEL GLOBAL ZETA
 # ==============================================================================
 ADMIN_ID = os.environ.get("TELEGRAM_ADMIN_ID")
-# UPDATED: Meningkatkan buffer history agar pesan lama Zeta tidak tertinggal saat dibersihkan
 MAX_MESSAGES_TO_TRACK = 500  
 MAX_MESSAGES_TO_DELETE_PER_BATCH = 50
 BOT_START_TIME = datetime.now()
+
+# --- DATABASE USER SEDERHANA ---
+USER_DB_FILE = 'user_stats.json'
+UNIQUE_USERS = set()
+
+def load_users_db():
+    """Memuat database user saat bot start"""
+    global UNIQUE_USERS
+    if os.path.exists(USER_DB_FILE):
+        try:
+            with open(USER_DB_FILE, 'r') as f:
+                data = json.load(f)
+                UNIQUE_USERS = set(data)
+            print(f"👥 Database user dimuat: {len(UNIQUE_USERS)} pengguna terdaftar.")
+        except Exception as e:
+            logger.error(f"Gagal memuat database user: {e}")
+
+def register_user_visit(user_id):
+    """Mencatat user baru jika belum ada"""
+    global UNIQUE_USERS
+    if user_id not in UNIQUE_USERS:
+        UNIQUE_USERS.add(user_id)
+        try:
+            with open(USER_DB_FILE, 'w') as f:
+                json.dump(list(UNIQUE_USERS), f)
+        except Exception as e:
+            logger.error(f"Gagal menyimpan user baru: {e}")
+
+def get_total_users():
+    """Mengambil jumlah total user"""
+    return len(UNIQUE_USERS)
 
 # API Keys (optional)
 CRYPTO_API = "https://api.coingecko.com/api/v3"
@@ -275,10 +305,10 @@ for key in get_products(special_type='Circle'): PAKET_DESCRIPTIONS[key] = create
 for key in get_products(special_type='BebasPuas'): PAKET_DESCRIPTIONS[key] = create_bebaspuas_description(key)
 
 PAKET_DESCRIPTIONS["bantuan"] = ("<b>Pusat Bantuan & Informasi</b> 🆘\n\n"
-                                      "Selamat datang di pusat bantuan Pulsa Net Bot.\n\n"
-                                      "Jika Anda mengalami kendala teknis, memiliki pertanyaan seputar produk, atau tertarik untuk menjadi reseller, jangan ragu untuk menghubungi Admin kami.\n\n"
-                                      "Gunakan perintah /start untuk kembali ke menu utama kapan saja.\n\n"
-                                      "📞 <b>Admin:</b> @hexynos\n" "🌐 <b>Website Resmi:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
+                                "Selamat datang di pusat bantuan Pulsa Net Bot.\n\n"
+                                "Jika Anda mengalami kendala teknis, memiliki pertanyaan seputar produk, atau tertarik untuk menjadi reseller, jangan ragu untuk menghubungi Admin kami.\n\n"
+                                "Gunakan perintah /start untuk kembali ke menu utama kapan saja.\n\n"
+                                "📞 <b>Admin:</b> @hexynos\n" "🌐 <b>Website Resmi:</b> <a href='https://pulsanet.kesug.com/'>pulsanet.kesug.com</a>")
 
 # ==============================================================================
 # 🚀 FITUR BARU ZETA POWER
@@ -944,7 +974,7 @@ async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.warning(f"Gagal mengirim pesan error akhir di clear_history ke chat {chat_id}. Error: {final_e}")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Start command yang diperbarui dengan Zeta Power"""
+    """Start command yang diperbarui dengan User Stats & Natural UI"""
     chat_id = update.effective_chat.id
     try:
         context.user_data.pop('state', None)
@@ -953,6 +983,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await track_message(context, update.message)
             
         user = update.effective_user
+        
+        # --- REGISTER USER ---
+        register_user_visit(user.id)
+        total_users = get_total_users()
+        
         try:
             now, hour = datetime.now(ZoneInfo("Asia/Jakarta")), datetime.now(ZoneInfo("Asia/Jakarta")).hour
             if 5 <= hour < 11: greeting, icon = "Selamat Pagi", "☀️"
@@ -964,17 +999,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             greeting, icon = "Halo", "👋"
 
         uptime_str = format_uptime(BOT_START_TIME)
-        username_info = f"<code>@{user.username}</code>" if user.username else "<i>(tidak ada)</i>"
+        username_info = f"@{user.username}" if user.username else "<i>(tidak ada)</i>"
         
-        main_text = (f"{icon} <b>{greeting}, {user.first_name}!</b>\n\n"
-                     f"Selamat datang di <b>Pulsa Net</b>.\nPlatform terpadu untuk semua kebutuhan digital Anda.\n\n"
-                     f"Silakan pilih layanan di bawah untuk memulai.\n"
+        # --- NEW NATURAL TEXT ---
+        main_text = (f"{icon} <b>{greeting}, {user.first_name}!</b> 🌈\n\n"
+                     f"Selamat datang di <b>Pulsa Net</b>! 🥳\n"
+                     f"Senang banget kamu mampir di sini. Kami siap bantu menuhin semua kebutuhan digitalmu, mulai dari kuota hemat, pulsa, sampai tools canggih ala Zeta Power. Semuanya ada, lengkap dan gampang banget dipake! ✨\n\n"
+                     f"Yuk, nggak usah malu-malu, langsung pilih menu di bawah buat mulai petualanganmu! 👇\n"
                      f"— — — — — — — — — — — —\n"
-                     f"👤 <b>Informasi Sesi</b>\n"
-                     f"  ├─ Username: {username_info}\n"
-                     f"  ├─ User ID: <code>{user.id}</code>\n"
-                     f"  └─ Chat ID: <code>{chat_id}</code>\n\n"
-                     f"🕒 <b>Status Uptime:</b> {uptime_str}")
+                     f"👥 <b>Statistik Komunitas</b>\n"
+                     f"  └─ Bergabung bersama <b>{total_users:,}</b> pengguna lainnya\n\n"
+                     f"👤 <b>Info Kamu</b>\n"
+                     f"  ├─ Akun: {username_info}\n"
+                     f"  └─ ID: <code>{user.id}</code>\n"
+                     f"— — — — — — — — — — — —\n"
+                     f"🕒 <b>Aktif Selama:</b> {uptime_str}")
 
         keyboard = [
             [InlineKeyboardButton("📡 Paket Data", callback_data="main_paket"), 
@@ -1408,17 +1447,6 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         state = context.user_data.get('state')
         message_text = update.message.text
         
-        # --- NO AUTO DELETE (PERMINTAAN USER) ---
-        # Kode di bawah ini sebelumnya menghapus pesan bot terakhir saat user mengetik
-        # Sekarang dinonaktifkan agar pesan tetap ada sampai tombol 'Bersihkan Chat' ditekan.
-        
-        # if state and 'messages_to_clear' in context.user_data and context.user_data['messages_to_clear']:
-        #     last_bot_message_id = context.user_data['messages_to_clear'][-1]
-        #     try:
-        #         await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=last_bot_message_id)
-        #     except Exception:
-        #         pass
-
         # --- ZETA FEATURE CHECK ---
         if state in ['awaiting_stock', 'awaiting_scrape', 'awaiting_shorten', 'awaiting_breach', 'awaiting_crypto_custom'] or ('current_game' in context.user_data and context.user_data['current_game']['type'] == 'number_guess'):
              await handle_zeta_text_messages(update, context)
@@ -1550,6 +1578,9 @@ def main():
         logger.critical("❌ FATAL: Token bot tidak ditemukan!")
         sys.exit(1)
     
+    # Load user database
+    load_users_db()
+    
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     print("🔧 Handler shutdown (Ctrl+C / SIGTERM) terdaftar.")
@@ -1593,12 +1624,13 @@ def main():
     bot_application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
     print(f"======================================================")
-    print(f"🚀 Bot Pulsa Net - ZETA POWER EDITION v19.2")
+    print(f"🚀 Bot Pulsa Net - ZETA POWER EDITION v19.3")
     print(f"======================================================")
     print("✅ Fitur Inti: AKTIF")
     print("✅ Zeta Power: CRYPTO, STOCKS, WEB SCRAPE, GAMES, SYSTEM MONITOR")
     print("✅ Advanced Tools: URL SHORTENER, BREACH CHECK, TRIVIA GAMES")
     print("✅ Mobile Optimized: UI/UX Enhanced")
+    print("✅ User Stats: AKTIF")
     print("\n💪 Bot sekarang 10x lebih powerful!")
     print("—" * 60)
     
