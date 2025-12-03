@@ -2,7 +2,7 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
 # Developer: frd099
-# Versi: 19.3 (User Stats & Natural UI)
+# Versi: 19.4 (Cleaner UI & Clear Stats)
 # ============================================
 
 import os
@@ -1001,19 +1001,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         uptime_str = format_uptime(BOT_START_TIME)
         username_info = f"@{user.username}" if user.username else "<i>(tidak ada)</i>"
         
-        # --- NEW NATURAL TEXT ---
-        main_text = (f"{icon} <b>{greeting}, {user.first_name}!</b> 🌈\n\n"
-                     f"Selamat datang di <b>Pulsa Net</b>! 🥳\n"
-                     f"Senang banget kamu mampir di sini. Kami siap bantu menuhin semua kebutuhan digitalmu, mulai dari kuota hemat, pulsa, sampai tools canggih ala Zeta Power. Semuanya ada, lengkap dan gampang banget dipake! ✨\n\n"
-                     f"Yuk, nggak usah malu-malu, langsung pilih menu di bawah buat mulai petualanganmu! 👇\n"
+        # --- NEW NATURAL TEXT (REVISED) ---
+        main_text = (f"{icon} <b>{greeting}, {user.first_name}!</b>\n\n"
+                     f"Selamat datang di <b>Pulsa Net</b>.\n"
+                     f"Bot ini siap membantu kebutuhan digitalmu, mulai dari pulsa, kuota data, hingga berbagai tools canggih.\n\n"
+                     f"Silakan pilih menu di bawah untuk memulai:\n"
                      f"— — — — — — — — — — — —\n"
-                     f"👥 <b>Statistik Komunitas</b>\n"
-                     f"  └─ Bergabung bersama <b>{total_users:,}</b> pengguna lainnya\n\n"
+                     f"📊 <b>Statistik Bot</b>\n"
+                     f"👥 Total Pengguna Terdaftar: <b>{total_users:,}</b>\n"
+                     f"— — — — — — — — — — — —\n"
                      f"👤 <b>Info Kamu</b>\n"
-                     f"  ├─ Akun: {username_info}\n"
-                     f"  └─ ID: <code>{user.id}</code>\n"
-                     f"— — — — — — — — — — — —\n"
-                     f"🕒 <b>Aktif Selama:</b> {uptime_str}")
+                     f"Username: {username_info}\n"
+                     f"ID Telegram: <code>{user.id}</code>\n\n"
+                     f"🕒 <b>Uptime:</b> {uptime_str}")
 
         keyboard = [
             [InlineKeyboardButton("📡 Paket Data", callback_data="main_paket"), 
@@ -1624,13 +1624,13 @@ def main():
     bot_application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
     print(f"======================================================")
-    print(f"🚀 Bot Pulsa Net - ZETA POWER EDITION v19.3")
+    print(f"🚀 Bot Pulsa Net - ZETA POWER EDITION v19.4")
     print(f"======================================================")
     print("✅ Fitur Inti: AKTIF")
     print("✅ Zeta Power: CRYPTO, STOCKS, WEB SCRAPE, GAMES, SYSTEM MONITOR")
     print("✅ Advanced Tools: URL SHORTENER, BREACH CHECK, TRIVIA GAMES")
     print("✅ Mobile Optimized: UI/UX Enhanced")
-    print("✅ User Stats: AKTIF")
+    print("✅ User Stats: AKTIF & CLEAN UI")
     print("\n💪 Bot sekarang 10x lebih powerful!")
     print("—" * 60)
     
