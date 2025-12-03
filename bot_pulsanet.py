@@ -2,7 +2,7 @@
 # 🤖 Bot Pulsa Net
 # File: bot_pulsanet.py
 # Developer: frd099
-# Versi: 19.4 (Cleaner UI & Clear Stats)
+# Versi: 19.5 (User Stats Start from 57)
 # ============================================
 
 import os
@@ -100,8 +100,8 @@ def register_user_visit(user_id):
             logger.error(f"Gagal menyimpan user baru: {e}")
 
 def get_total_users():
-    """Mengambil jumlah total user"""
-    return len(UNIQUE_USERS)
+    """Mengambil jumlah total user (Dimulai dari 57)"""
+    return len(UNIQUE_USERS) + 57
 
 # API Keys (optional)
 CRYPTO_API = "https://api.coingecko.com/api/v3"
