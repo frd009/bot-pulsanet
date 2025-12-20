@@ -1,7 +1,7 @@
 # ============================================
 # 🤖 Bot Pulsa Net - Ultimate Edition
 # File: bot_pulsanet_api.py
-# Version: 3.1 (UI Original + API Live + Internet Tools + Full XL Special)
+# Version: 3.2 (Added Error Handler & Stability Fixes)
 # By : frd009
 # ============================================
 
@@ -48,6 +48,7 @@ except ImportError:
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.constants import ParseMode
+from telegram.error import BadRequest, TimedOut, NetworkError, Forbidden, Conflict
 from telegram.request import HTTPXRequest
 
 # ==============================================================================
@@ -210,7 +211,8 @@ class PortalPulsaAPI:
                 
                 # Debugging: Print hasil raw
                 logger.info(f"📩 API Response Code: {response.status_code}")
-                logger.info(f"📩 API Response Body: {response.text[:200]}...") # Print 200 char pertama
+                # Hati-hati logging body penuh jika ada data sensitif, tapi untuk debugging error ini penting
+                logger.info(f"📩 API Response Body: {response.text[:300]}...") 
 
                 response.raise_for_status()
                 return response.json()
@@ -334,6 +336,41 @@ def parse_operator(product_name):
     return 'Lainnya'
 
 # ==============================================================================
+# 🚨 ERROR HANDLER
+# ==============================================================================
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Log the error and send a telegram message to notify the developer."""
+    logger.error("Exception while handling an update:", exc_info=context.error)
+
+    # Specific handling for Conflict (Multiple instances)
+    if isinstance(context.error, Conflict):
+        logger.critical("🛑 CONFLICT ERROR: Another instance of the bot is running. Shutting down to prevent loop.")
+        # Optional: sys.exit(1) to kill this instance if you want strict enforcement
+        return
+
+    # Specific handling for Network/Timeout
+    if isinstance(context.error, (TimedOut, NetworkError)):
+        logger.warning("⚠️ Network/Timeout error. Retrying...")
+        return
+
+    # For other errors, try to notify admin if set
+    if ADMIN_ID and update and isinstance(update, Update):
+        try:
+            tb_list = traceback.format_exception(None, context.error, context.error.__traceback__)
+            tb_string = "".join(tb_list)
+            message = (
+                f"🚨 <b>An exception was raised while handling an update</b>\n"
+                f"<pre>update = {html.escape(json.dumps(update.to_dict(), indent=2, ensure_ascii=False))}"
+                "</pre>\n\n"
+                f"<pre>context.chat_data = {html.escape(str(context.chat_data))}</pre>\n\n"
+                f"<pre>context.user_data = {html.escape(str(context.user_data))}</pre>\n\n"
+                f"<pre>{html.escape(tb_string[-2000:])}</pre>"
+            )
+            await context.bot.send_message(chat_id=ADMIN_ID, text=message, parse_mode=ParseMode.HTML)
+        except Exception as e:
+            logger.error(f"Failed to send error log to admin: {e}")
+
+# ==============================================================================
 # 🎮 HANDLERS (START & MENUS)
 # ==============================================================================
 
@@ -344,7 +381,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Time Greeting logic
     try:
-        # Coba pake ZoneInfo, kalau gagal pakai UTC default
         try:
             tz = ZoneInfo("Asia/Jakarta")
             hour = datetime.now(tz).hour
@@ -434,10 +470,10 @@ async def menu_category_handler(update: Update, context: ContextTypes.DEFAULT_TY
     if products is None:
         error_text = ("❌ <b>Gagal Mengambil Data</b>\n\n"
                       "Bot gagal terhubung ke PortalPulsa. Kemungkinan penyebab:\n"
-                      "1. IP Server Railway berubah (IP Whitelist).\n"
-                      "2. Kredensial API salah.\n"
-                      "3. Saldo akun habis/suspended.\n\n"
-                      "<i>Cek Logs Railway untuk detail error.</i>")
+                      "1. <b>IP Server Ditolak</b>: Cek Logs untuk melihat IP Railway Anda, lalu whitelist di PortalPulsa.\n"
+                      "2. <b>Konflik Bot</b>: Ada bot lain berjalan dengan token sama.\n"
+                      "3. <b>Kredensial Salah</b>: Cek UserID/Key/Secret.\n\n"
+                      "<i>Cek Logs Railway untuk IP Address.</i>")
         await msg.edit_text(error_text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Kembali", callback_data="start")]]), parse_mode=ParseMode.HTML)
         return
 
@@ -707,6 +743,9 @@ def main():
 
     app = Application.builder().token(TOKEN).build()
 
+    # Register Error Handler FIRST
+    app.add_error_handler(error_handler)
+
     # Commands
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(start, pattern='^start$'))
@@ -728,9 +767,10 @@ def main():
     # Text
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("🚀 Bot Pulsa Net Ultimate (v3.0) Started...")
+    print("🚀 Bot Pulsa Net Ultimate (v3.2) Started...")
     print("✅ API PortalPulsa Connected")
     print("✅ Zeta Tools Active")
+    print("✅ Error Handlers Active")
     
     app.run_polling(drop_pending_updates=True)
 
