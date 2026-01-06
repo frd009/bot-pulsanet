@@ -315,7 +315,7 @@ PAKET_DESCRIPTIONS["bantuan"] = ("<b>Pusat Bantuan & Informasi</b> 🆘\n\n"
 # ==============================================================================
 
 class ZetaPowerFeatures:
-    """Class untuk fitur-fitur powerful baru"""
+    """Class untuk fitur-fitur powerful baru (UPDATED)"""
     
     @staticmethod
     async def get_crypto_price(coin: str = "bitcoin") -> str:
@@ -350,21 +350,36 @@ class ZetaPowerFeatures:
     
     @staticmethod
     async def web_scrape(url: str) -> str:
-        """Simple web scraping untuk mendapatkan title dan meta"""
+        """Web scraping dengan Headers (Anti-Blokir 403)"""
+        if not url.startswith(('http://', 'https://')):
+            url = 'https://' + url
+            
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(url, timeout=10)
+            # FIX: Menambahkan User-Agent agar dianggap browser asli
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            }
+            
+            async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
+                response = await client.get(url, headers=headers)
+                
+                if response.status_code != 200:
+                    return f"❌ Gagal akses (Status Code: {response.status_code})"
+
                 soup = BeautifulSoup(response.text, 'html.parser')
                 
-                title = soup.title.string if soup.title else "No Title"
-                description = soup.find("meta", attrs={"name": "description"})
-                desc_content = description["content"] if description else "No Description"
+                # Ambil Title dengan aman
+                title = soup.title.string.strip() if soup.title and soup.title.string else "No Title"
+                
+                # Ambil Description (Coba meta name atau og:description)
+                meta_desc = soup.find("meta", attrs={"name": "description"}) or soup.find("meta", attrs={"property": "og:description"})
+                desc_content = meta_desc["content"].strip() if meta_desc and meta_desc.get("content") else "No Description"
                 
                 return (f"🌐 <b>Website Info</b>\n\n"
-                        f"📄 Title: {safe_html(title)}\n"
-                        f"📝 Description: {safe_html(desc_content[:200])}...")
+                        f"📄 <b>Title:</b> {safe_html(title)}\n"
+                        f"📝 <b>Desc:</b> {safe_html(desc_content[:300])}...")
         except Exception as e:
-            return f"❌ Gagal scraping website: {e}"
+            return f"❌ Gagal scraping website: {safe_html(str(e)[:100])}"
     
     @staticmethod
     async def get_stock_price(symbol: str) -> str:
@@ -374,13 +389,13 @@ class ZetaPowerFeatures:
                 response = await client.get(f"{STOCK_API}?function=GLOBAL_QUOTE&symbol={symbol}&apikey={STOCK_API_KEY}")
                 data = response.json()
                 
-                if "Global Quote" in data:
+                if "Global Quote" in data and data["Global Quote"]:
                     quote = data["Global Quote"]
                     return (f"📊 <b>{symbol} Stock</b>\n\n"
-                           f"💵 Price: ${quote['05. price']}\n"
-                           f"📈 Change: {quote['09. change']} ({quote['10. change percent']})\n"
-                           f"🕒 Latest: {quote['07. latest trading day']}")
-                return "❌ Stock symbol tidak ditemukan"
+                           f"💵 Price: ${quote.get('05. price', 'N/A')}\n"
+                           f"📈 Change: {quote.get('09. change', '0')} ({quote.get('10. change percent', '0%')})\n"
+                           f"🕒 Latest: {quote.get('07. latest trading day', 'N/A')}")
+                return "❌ Stock symbol tidak ditemukan / API Limit Reached"
         except Exception as e:
             return f"❌ Error fetching stock: {e}"
     
@@ -388,48 +403,36 @@ class ZetaPowerFeatures:
     def get_system_stats() -> str:
         """Get system statistics"""
         try:
-            # CPU usage
-            cpu_percent = psutil.cpu_percent(interval=1)
-            
-            # Memory usage
+            cpu_percent = psutil.cpu_percent(interval=None)
             memory = psutil.virtual_memory()
-            memory_total = memory.total / (1024 ** 3)  # GB
-            memory_used = memory.used / (1024 ** 3)
-            memory_percent = memory.percent
-            
-            # Disk usage
             disk = psutil.disk_usage('/')
-            disk_total = disk.total / (1024 ** 3)
-            disk_used = disk.used / (1024 ** 3)
-            disk_percent = disk.percent
-            
-            # Bot uptime
             uptime = format_uptime(BOT_START_TIME)
             
             return (f"🖥️ <b>System Monitor</b>\n\n"
                    f"⚡ CPU Usage: {cpu_percent}%\n"
-                   f"💾 Memory: {memory_used:.1f}GB / {memory_total:.1f}GB ({memory_percent}%)\n"
-                   f"💽 Disk: {disk_used:.1f}GB / {disk_total:.1f}GB ({disk_percent}%)\n"
+                   f"💾 Memory: {memory.used / (1024**3):.1f}GB / {memory.total / (1024**3):.1f}GB ({memory.percent}%)\n"
+                   f"💽 Disk: {disk.used / (1024**3):.1f}GB / {disk.total / (1024**3):.1f}GB ({disk.percent}%)\n"
                    f"⏰ Uptime: {uptime}")
         except Exception as e:
             return f"❌ Error getting system stats: {e}"
     
     @staticmethod
     async def check_data_breach(email: str) -> str:
-        """Check if email appears in known data breaches (educational)"""
-        domains = ["gmail.com", "yahoo.com", "hotmail.com"]
+        """Educational Check for Data Breach"""
+        # Simulasi logika untuk edukasi (karena tidak memakai API berbayar HIBP)
+        domains_risk = ["gmail.com", "yahoo.com", "hotmail.com", "outlook.com"]
         domain = email.split('@')[-1] if '@' in email else ""
         
-        if domain in domains:
-            return (f"🔒 <b>Data Breach Check</b>\n\n"
-                   f"📧 Email: {safe_html(email)}\n"
-                   f"⚠️ Status: Potensi terpapar dalam breach\n"
-                   f"💡 Saran: Ganti password dan aktifkan 2FA")
+        base_msg = f"🔒 <b>Data Breach Check (Simulasi)</b>\n\n📧 Email: {safe_html(email)}\n"
+        
+        if domain in domains_risk:
+            return (base_msg +
+                   f"⚠️ <b>Status:</b> Domain umum ({domain}) sering menjadi target kebocoran data massal.\n"
+                   f"💡 <b>Saran:</b> Wajib aktifkan 2FA (Two-Factor Authentication) dan ganti password berkala.")
         else:
-            return (f"🔒 <b>Data Breach Check</b>\n\n"
-                   f"📧 Email: {safe_html(email)}\n"
-                   f"✅ Status: Tidak terdeteksi dalam breach utama\n"
-                   f"💡 Tips: Selalu gunakan password unik")
+            return (base_msg +
+                   f"✅ <b>Status:</b> Domain ini ({domain}) terlihat lebih spesifik.\n"
+                   f"💡 <b>Tips:</b> Gunakan password unik untuk setiap layanan.")
 
 # ==============================================================================
 # 🎮 GAME ADVANCED ZETA
@@ -1408,59 +1411,92 @@ async def handle_ip_lookup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await track_message(context, sent_msg2)
 
 async def handle_base64(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle base64 encoding/decoding"""
+    """Handle base64 encoding/decoding (Safe Version)"""
     status_msg = None
     try:
         status_msg = await update.message.reply_text("📦 Memproses teks...", parse_mode=ParseMode.HTML)
         await track_message(context, status_msg)
+        
         original_text = update.message.text
         try:
+            # Coba Decode
             missing_padding = len(original_text) % 4
-            if missing_padding: original_text += '=' * (4 - missing_padding)
-            decoded_text = base64.b64decode(original_text).decode('utf-8')
-            operation, result_text, input_text = "DECODE", decoded_text, original_text
-        except (ValueError, base64.binascii.Error):
+            if missing_padding:
+                original_text += '=' * (4 - missing_padding)
+            decoded_bytes = base64.b64decode(original_text)
+            
+            # Cek apakah hasil decode adalah utf-8 valid
+            decoded_text = decoded_bytes.decode('utf-8')
+            operation, result_text, input_text = "DECODE", decoded_text, update.message.text
+        except (ValueError, base64.binascii.Error, UnicodeDecodeError):
+            # Jika gagal decode, maka Encode
             encoded_text = base64.b64encode(original_text.encode('utf-8')).decode('utf-8')
             operation, result_text, input_text = "ENCODE", encoded_text, original_text
 
         if operation == "ENCODE":
             final_text = (f"📦 <b>Hasil Encode Base64</b>\n\n"
-                          f"<b>Teks Asli:</b>\n<pre>{safe_html(input_text)}</pre>\n"
+                          f"<b>Teks Asli:</b>\n<pre>{safe_html(input_text[:500])}</pre>\n"
                           f"<b>Hasil Encode:</b>\n<code>{safe_html(result_text)}</code>")
         else:
             final_text = (f"📦 <b>Hasil Decode Base64</b>\n\n"
-                          f"<b>Teks Base64:</b>\n<code>{safe_html(input_text)}</code>\n"
+                          f"<b>Teks Base64:</b>\n<code>{safe_html(input_text[:500])}</code>\n"
                           f"<b>Hasil Decode:</b>\n<pre>{safe_html(result_text)}</pre>")
-        await status_msg.edit_text(final_text, parse_mode=ParseMode.HTML)
+        
+        # FIX: Cek panjang pesan telegram (Max 4096)
+        if len(final_text) > 4000:
+            await status_msg.edit_text("❌ Hasil terlalu panjang untuk ditampilkan di chat telegram.", parse_mode=ParseMode.HTML)
+        else:
+            await status_msg.edit_text(final_text, parse_mode=ParseMode.HTML)
+            
     except Exception as e:
         await send_admin_log(context, e, update, "handle_base64")
-        if status_msg: await status_msg.edit_text("❌ Terjadi kesalahan. Pastikan teks yang Anda kirim valid.", parse_mode=ParseMode.HTML)
+        if status_msg: 
+            await status_msg.edit_text("❌ Terjadi kesalahan saat memproses data.", parse_mode=ParseMode.HTML)
     finally:
-        keyboard = [[InlineKeyboardButton("📦 Proses Teks Lagi", callback_data="ask_for_base64")], [InlineKeyboardButton("⬅️ Kembali ke Tools", callback_data="main_tools")]]
+        keyboard = [[InlineKeyboardButton("📦 Proses Teks Lagi", callback_data="ask_for_base64")], 
+                    [InlineKeyboardButton("⬅️ Kembali ke Tools", callback_data="main_tools")]]
         sent_msg2 = await update.message.reply_text("Pilih aksi selanjutnya:", reply_markup=InlineKeyboardMarkup(keyboard))
         await track_message(context, sent_msg2)
 
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle text messages (Combined Handler)"""
+    """Handle text messages (Combined Handler & Optimized Regex)"""
     try:
+        # Ignore command explicitly (just in case filter misses)
+        if update.message.text.startswith('/'): return
+
         await track_message(context, update.message)
         state = context.user_data.get('state')
         message_text = update.message.text
         
         # --- ZETA FEATURE CHECK ---
-        if state in ['awaiting_stock', 'awaiting_scrape', 'awaiting_shorten', 'awaiting_breach', 'awaiting_crypto_custom'] or ('current_game' in context.user_data and context.user_data['current_game']['type'] == 'number_guess'):
+        zeta_states = ['awaiting_stock', 'awaiting_scrape', 'awaiting_shorten', 
+                       'awaiting_breach', 'awaiting_crypto_custom']
+        
+        if state in zeta_states or ('current_game' in context.user_data and context.user_data['current_game']['type'] == 'number_guess'):
              await handle_zeta_text_messages(update, context)
              return
 
         # --- STANDARD TOOLS CHECK ---
         if state == 'awaiting_number':
             context.user_data.pop('state', None)
-            phone_pattern = r'(\+?\d{1,3}[\s-]?\d[\d\s-]{7,14}\d)'
-            numbers = re.findall(phone_pattern, message_text)
-            response_text = "\n\n".join([get_provider_info_global(num.replace(" ", "").replace("-", "")) for num in numbers]) if numbers else "❌ Format nomor tidak valid."
+            # FIX: Regex lebih spesifik untuk Indonesia & Internasional (+62, 08, 62)
+            # Mencegah salah deteksi angka nominal/acak
+            phone_pattern = r'(?:\+62|62|08)\d{8,12}'
+            numbers = re.findall(phone_pattern, message_text.replace(" ", "").replace("-", ""))
+            
+            if numbers:
+                # Gunakan set() untuk menghapus duplikat
+                unique_numbers = list(set(numbers))
+                responses = [get_provider_info_global(num) for num in unique_numbers]
+                response_text = "\n\n".join(responses)
+            else:
+                response_text = "❌ Format nomor tidak valid. Pastikan diawali 08, 62, atau +62."
+                
             sent_msg = await update.message.reply_text(response_text, parse_mode=ParseMode.HTML)
             await track_message(context, sent_msg)
-            keyboard_next = [[InlineKeyboardButton("📱 Cek Nomor Lain", callback_data="ask_for_number")], [InlineKeyboardButton("🏠 Menu Utama", callback_data="back_to_start")]]
+            
+            keyboard_next = [[InlineKeyboardButton("📱 Cek Nomor Lain", callback_data="ask_for_number")], 
+                             [InlineKeyboardButton("🏠 Menu Utama", callback_data="back_to_start")]]
             nav_msg = await update.message.reply_text("Pilih aksi selanjutnya:", reply_markup=InlineKeyboardMarkup(keyboard_next))
             await track_message(context, nav_msg)
             return
@@ -1489,14 +1525,20 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         elif state == 'awaiting_base64': context.user_data.pop('state', None); await handle_base64(update, context); return
         elif state == 'awaiting_currency': context.user_data.pop('state', None); await handle_currency_conversion(update, context); return
 
-        phone_pattern = r'(\+?\d{1,3}[\s-]?\d[\d\s-]{7,14}\d)'
-        if not state and (numbers := re.findall(phone_pattern, message_text)) and len(numbers) <= 3:
-            responses = [get_provider_info_global(num.replace(" ", "").replace("-", "")) for num in numbers]
-            sent_msg = await update.message.reply_text(
-                "💡 <b>Info Nomor Terdeteksi Otomatis:</b>\n\n" + "\n\n".join(responses),
-                parse_mode=ParseMode.HTML, disable_web_page_preview=True
-            )
-            await track_message(context, sent_msg)
+        # --- AUTO DETECT PHONE NUMBER (Tanpa State) ---
+        # Hanya mendeteksi jika text pendek (< 50 char) dan formatnya sangat mirip nomor HP
+        if not state and len(message_text) < 50:
+            phone_pattern = r'(?:\+62|62|08)\d{8,12}'
+            numbers = re.findall(phone_pattern, message_text.replace(" ", "").replace("-", ""))
+            
+            if numbers:
+                unique_numbers = list(set(numbers))
+                responses = [get_provider_info_global(num) for num in unique_numbers]
+                sent_msg = await update.message.reply_text(
+                    "💡 <b>Info Nomor Terdeteksi Otomatis:</b>\n\n" + "\n\n".join(responses),
+                    parse_mode=ParseMode.HTML, disable_web_page_preview=True
+                )
+                await track_message(context, sent_msg)
             
     except Exception as e:
         await send_admin_log(context, e, update, "handle_text_message")
@@ -1571,26 +1613,52 @@ async def generate_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # 🚀 FUNGSI UTAMA
 # ==============================================================================
 
+async def global_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Log the error and send a telegram message to notify the developer."""
+    logger.error("Exception while handling an update:", exc_info=context.error)
+    
+    # Optional: Kirim notif ke Admin jika ada error fatal
+    if ADMIN_ID:
+        try:
+            tb_list = traceback.format_exception(None, context.error, context.error.__traceback__)
+            tb_string = "".join(tb_list)
+            message = (
+                f"🚨 <b>GLOBAL ERROR HANDLER</b>\n\n"
+                f"<pre>{html.escape(tb_string[-3000:])}</pre>"
+            )
+            await context.bot.send_message(chat_id=ADMIN_ID, text=message, parse_mode=ParseMode.HTML)
+        except:
+            pass
+
 def main():
     global bot_application
     TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+    
+    # Cek Token
     if not TOKEN: 
-        logger.critical("❌ FATAL: Token bot tidak ditemukan!")
+        logger.critical("❌ FATAL: Token bot tidak ditemukan! Set env variable TELEGRAM_BOT_TOKEN.")
         sys.exit(1)
     
     # Load user database
     load_users_db()
     
+    # Signal Handlers
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     print("🔧 Handler shutdown (Ctrl+C / SIGTERM) terdaftar.")
     
+    # HTTPX Configuration
     timeout_config = HTTPXRequest(connect_timeout=20.0, read_timeout=40.0, write_timeout=40.0)
+    
+    # Build Application
     bot_application = Application.builder().token(TOKEN).request(timeout_config).build()
 
     # ==================== REGISTER ALL HANDLERS ====================
     
-    # Existing handlers
+    # 1. Error Handler (PENTING)
+    bot_application.add_error_handler(global_error_handler)
+
+    # 2. Command & Callbacks
     bot_application.add_handler(CommandHandler("start", start))
     bot_application.add_handler(CallbackQueryHandler(start, pattern='^back_to_start$'))
     bot_application.add_handler(CallbackQueryHandler(clear_history, pattern='^clear_history$'))
@@ -1606,7 +1674,7 @@ def main():
     bot_application.add_handler(CallbackQueryHandler(play_game, pattern=r'^game_play_(rock|scissors|paper)$'))
     bot_application.add_handler(CallbackQueryHandler(generate_password, pattern='^gen_password$'))
     
-    # NEW: Zeta Power Handlers
+    # 3. Zeta Power Handlers
     bot_application.add_handler(CallbackQueryHandler(show_zeta_power_menu, pattern='^zeta_power$'))
     bot_application.add_handler(CallbackQueryHandler(handle_zeta_crypto, pattern='^zeta_crypto$'))
     bot_application.add_handler(CallbackQueryHandler(handle_crypto_price, pattern='^crypto_'))
@@ -1620,20 +1688,18 @@ def main():
     bot_application.add_handler(CallbackQueryHandler(handle_trivia_answer, pattern='^trivia_'))
     bot_application.add_handler(CallbackQueryHandler(prompt_for_action, pattern='^zeta_crypto_custom$'))
     
-    # Message handlers - FIXED: Only one unified text handler
+    # 4. Message Handlers (TEXT)
     bot_application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
     print(f"======================================================")
-    print(f"🚀 Bot Pulsa Net - ZETA POWER EDITION v19.4")
+    print(f"🚀 Bot Pulsa Net - ZETA POWER EDITION v19.6 (STABLE)")
     print(f"======================================================")
-    print("✅ Fitur Inti: AKTIF")
-    print("✅ Zeta Power: CRYPTO, STOCKS, WEB SCRAPE, GAMES, SYSTEM MONITOR")
-    print("✅ Advanced Tools: URL SHORTENER, BREACH CHECK, TRIVIA GAMES")
-    print("✅ Mobile Optimized: UI/UX Enhanced")
-    print("✅ User Stats: AKTIF & CLEAN UI")
-    print("\n💪 Bot sekarang 10x lebih powerful!")
+    print("✅ System: ONLINE")
+    print("✅ Handlers: REGISTERED")
+    print("✅ Error Protection: ACTIVE")
     print("—" * 60)
     
+    # Jalankan Bot
     bot_application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 if __name__ == "__main__":
